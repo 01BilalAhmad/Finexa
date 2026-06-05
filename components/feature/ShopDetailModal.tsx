@@ -8,7 +8,6 @@ import { Shop, Transaction, ShopNote, ReceiptData } from '@/types';
 import { useAuth } from '@/hooks/useAuth';
 import { apiGetTransactions, apiUpdateShopPhone } from '@/services/api';
 import { StorageService } from '@/services/storage';
-import { ReceiptModal } from '@/components/feature/ReceiptModal';
 import { Colors, FontSize, FontWeight, Radius, Spacing } from '@/constants/theme';
 import { formatPKRFull, formatPKR, formatDate, getCreditUsage } from '@/utils/format';
 import { Badge } from '@/components/ui/Badge';
@@ -31,14 +30,11 @@ export function ShopDetailModal({ visible, shop, onClose, onCollect }: ShopDetai
   const [editingPhone, setEditingPhone] = useState(false);
   const [phone, setPhone] = useState('');
   const [phoneSaving, setPhoneSaving] = useState(false);
-  const [lastReceipt, setLastReceipt] = useState<ReceiptData | null>(null);
-  const [showReceipt, setShowReceipt] = useState(false);
 
   useEffect(() => {
     if (visible && shop && selectedCompany) {
       loadTransactions();
       loadNote();
-      loadLastReceipt();
       setPhone(shop.phone || '');
     }
   }, [visible, shop?.id]);
@@ -64,12 +60,6 @@ export function ShopDetailModal({ visible, shop, onClose, onCollect }: ShopDetai
     if (note.trim()) await StorageService.saveShopNote(shop.id, note.trim());
     else await StorageService.deleteShopNote(shop.id);
     setEditingNote(false);
-  }
-
-  async function loadLastReceipt() {
-    if (!shop) return;
-    const receipts = await StorageService.getLastReceipts();
-    setLastReceipt(receipts[shop.id] || null);
   }
 
   async function savePhone() {
@@ -181,33 +171,6 @@ export function ShopDetailModal({ visible, shop, onClose, onCollect }: ShopDetai
             </View>
           </View>
 
-          {/* Last Receipt */}
-          {lastReceipt && (
-            <View style={styles.section}>
-              <View style={styles.sectionRow}>
-                <Text style={styles.sectionTitle}>Last Receipt</Text>
-                <Pressable onPress={() => setShowReceipt(true)} style={styles.viewReceiptBtn}>
-                  <MaterialIcons name="receipt-long" size={14} color={Colors.primary} />
-                  <Text style={styles.viewReceiptBtnText}>View Receipt</Text>
-                </Pressable>
-              </View>
-              <View style={styles.lastReceiptPreview}>
-                <View style={styles.detailRow}>
-                  <Text style={styles.detailLabel}>Amount</Text>
-                  <Text style={[styles.detailText, { color: Colors.success, fontWeight: FontWeight.bold }]}>{formatPKRFull(lastReceipt.paymentAmount)}</Text>
-                </View>
-                <View style={styles.detailRow}>
-                  <Text style={styles.detailLabel}>Remaining</Text>
-                  <Text style={styles.detailText}>{formatPKRFull(lastReceipt.remainingBalance)}</Text>
-                </View>
-                <View style={styles.detailRow}>
-                  <Text style={styles.detailLabel}>Date</Text>
-                  <Text style={styles.detailText}>{formatDate(lastReceipt.date)}</Text>
-                </View>
-              </View>
-            </View>
-          )}
-
           {/* Note */}
           <View style={styles.section}>
             <View style={styles.sectionRow}>
@@ -268,13 +231,6 @@ export function ShopDetailModal({ visible, shop, onClose, onCollect }: ShopDetai
             )}
           </View>
         </ScrollView>
-
-        {/* Receipt Modal */}
-        <ReceiptModal
-          visible={showReceipt}
-          receipt={lastReceipt}
-          onClose={() => setShowReceipt(false)}
-        />
       </View>
     </Modal>
   );
@@ -336,12 +292,4 @@ const styles = StyleSheet.create({
   txnDesc: { fontSize: FontSize.xs, color: Colors.textMuted, marginTop: 1 },
   txnAmount: { fontSize: FontSize.sm, fontWeight: FontWeight.bold },
   emptyText: { fontSize: FontSize.sm, color: Colors.textMuted, textAlign: 'center', paddingVertical: 16 },
-  viewReceiptBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    backgroundColor: Colors.primaryMuted, paddingHorizontal: 10, paddingVertical: 5,
-    borderRadius: Radius.sm,
-  },
-  viewReceiptBtnText: { fontSize: FontSize.xs, fontWeight: FontWeight.semibold, color: Colors.primary },
-  detailLabel: { fontSize: FontSize.xs, color: Colors.textMuted, fontWeight: FontWeight.medium, minWidth: 80 },
-  lastReceiptPreview: { gap: 2 },
 });

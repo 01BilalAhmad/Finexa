@@ -1,41 +1,29 @@
 import React, { useState, useMemo } from 'react';
 import {
   View, Text, StyleSheet, FlatList, Pressable,
-  TextInput, Modal, ActivityIndicator, ScrollView, Alert, Linking,
+  TextInput, Modal, ActivityIndicator, ScrollView,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useShops } from '@/hooks/useShops';
 import { useAuth } from '@/hooks/useAuth';
-import { apiGetLedger, apiEditPendingRecovery } from '@/services/api';
-import { Shop, LedgerEntry, ReceiptData } from '@/types';
+import { apiGetLedger } from '@/services/api';
+import { Shop, LedgerEntry } from '@/types';
 import { Colors, FontSize, FontWeight, Radius, Spacing } from '@/constants/theme';
-import { formatPKRFull, formatPKR, formatDate, formatTime } from '@/utils/format';
+import { formatPKRFull, formatPKR, formatDate } from '@/utils/format';
 import { Badge } from '@/components/ui/Badge';
 import { CompanySelector } from '@/components/layout/CompanySelector';
-import { ReceiptModal } from '@/components/feature/ReceiptModal';
 
 export default function LedgerScreen() {
   const insets = useSafeAreaInsets();
   const { shops } = useShops();
-  const { selectedCompany, user, distributorPhone } = useAuth();
+  const { selectedCompany } = useAuth();
 
   const [shopSearch, setShopSearch] = useState('');
   const [selectorOpen, setSelectorOpen] = useState(false);
   const [selectedShop, setSelectedShop] = useState<Shop | null>(null);
   const [ledger, setLedger] = useState<LedgerEntry | null>(null);
   const [loading, setLoading] = useState(false);
-
-  // Edit pending modal state
-  const [editModal, setEditModal] = useState(false);
-  const [editTxn, setEditTxn] = useState<{ id: string; amount: number; description?: string; shopName: string; shopId: string; previousBalance?: number } | null>(null);
-  const [editAmount, setEditAmount] = useState('');
-  const [editDesc, setEditDesc] = useState('');
-  const [editLoading, setEditLoading] = useState(false);
-
-  // Receipt modal state (for regenerated receipt after edit)
-  const [receiptVisible, setReceiptVisible] = useState(false);
-  const [regeneratedReceipt, setRegeneratedReceipt] = useState<ReceiptData | null>(null);
 
   const filteredShops = useMemo(() => {
     if (!shopSearch.trim()) return shops.slice(0, 30);
@@ -57,71 +45,6 @@ export default function LedgerScreen() {
       setLedger(data);
     } catch { /* ignore */ }
     finally { setLoading(false); }
-  }
-
-  async function refreshLedger() {
-    if (!selectedShop) return;
-    setLoading(true);
-    try {
-      const data = await apiGetLedger(selectedShop.id, selectedCompany?.id || '');
-      setLedger(data);
-    } catch { /* ignore */ }
-    finally { setLoading(false); }
-  }
-
-  function openEdit(txn: { id: string; amount: number; description?: string; shopName?: string; shopId: string }) {
-    setEditTxn({ id: txn.id, amount: txn.amount, description: txn.description, shopName: txn.shopName || '', shopId: txn.shopId });
-    setEditAmount(txn.amount.toString());
-    setEditDesc(txn.description || '');
-    setEditModal(true);
-  }
-
-  async function submitEdit() {
-    if (!editTxn || !selectedShop) return;
-    const newAmount = parseInt(editAmount.replace(/,/g, ''), 10);
-    if (!newAmount || newAmount < 100) {
-      Alert.alert('Invalid Amount', 'Minimum recovery amount is Rs. 100');
-      return;
-    }
-    if (newAmount > 500000) {
-      Alert.alert('Invalid Amount', 'Maximum recovery amount is Rs. 500,000');
-      return;
-    }
-    setEditLoading(true);
-    try {
-      await apiEditPendingRecovery(editTxn.id, newAmount, editDesc.trim() || undefined);
-
-      // Generate updated receipt with new amount
-      const shop = selectedShop;
-      const openingBalance = shop.balance; // Current shop balance (pending hasn't affected it)
-      const remainingBalance = openingBalance - newAmount; // Projected if approved
-
-      const updatedReceipt: ReceiptData = {
-        shopId: shop.id,
-        shopName: shop.name,
-        shopPhone: shop.phone,
-        ownerName: shop.ownerName,
-        address: shop.address,
-        orderbookerName: user?.name || '',
-        distributorPhone: distributorPhone || '',
-        companyName: selectedCompany?.name || '',
-        openingBalance,
-        paymentAmount: newAmount,
-        remainingBalance,
-        date: new Date().toISOString(),
-      };
-
-      setRegeneratedReceipt(updatedReceipt);
-      setEditModal(false);
-      setReceiptVisible(true);
-
-      // Refresh ledger in background
-      refreshLedger();
-    } catch (e: any) {
-      Alert.alert('Error', e?.message || 'Failed to update recovery');
-    } finally {
-      setEditLoading(false);
-    }
   }
 
   return (
@@ -207,22 +130,10 @@ export default function LedgerScreen() {
                     }]}>
                       {txn.type === 'credit' ? '+' : '-'}{formatPKR(txn.amount)}
                     </Text>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                      <Badge
-                        label={txn.status.charAt(0).toUpperCase() + txn.status.slice(1)}
-                        variant={txn.status === 'approved' ? 'success' : txn.status === 'pending' ? 'warning' : 'danger'}
-                      />
-                      {/* Edit button — ONLY for pending recoveries */}
-                      {txn.type === 'recovery' && txn.status === 'pending' && (
-                        <Pressable
-                          onPress={() => openEdit(txn)}
-                          style={styles.editBtn}
-                          hitSlop={4}
-                        >
-                          <MaterialIcons name="edit" size={14} color={Colors.warning} />
-                        </Pressable>
-                      )}
-                    </View>
+                    <Badge
+                      label={txn.status.charAt(0).toUpperCase() + txn.status.slice(1)}
+                      variant={txn.status === 'approved' ? 'success' : txn.status === 'pending' ? 'warning' : 'danger'}
+                    />
                   </View>
                 </View>
               ))
@@ -270,88 +181,6 @@ export default function LedgerScreen() {
           />
         </View>
       </Modal>
-
-      {/* ── Edit Pending Recovery Modal ── */}
-      <Modal visible={editModal} transparent animationType="fade">
-        <View style={styles.editOverlay}>
-          <View style={styles.editContainer}>
-            <View style={styles.editHeader}>
-              <Text style={styles.editTitle}>Edit Pending Recovery</Text>
-              <Pressable onPress={() => setEditModal(false)} hitSlop={8}>
-                <MaterialIcons name="close" size={20} color={Colors.textSecondary} />
-              </Pressable>
-            </View>
-
-            {editTxn && (
-              <>
-                <Text style={styles.editShopName}>{editTxn.shopName}</Text>
-
-                {/* Old Amount */}
-                <View style={styles.editOldRow}>
-                  <Text style={styles.editOldLabel}>Current Amount:</Text>
-                  <Text style={styles.editOldValue}>Rs. {editTxn.amount.toLocaleString('en-PK')}</Text>
-                </View>
-
-                {/* New Amount */}
-                <Text style={styles.editFieldLabel}>New Amount (Rs.)</Text>
-                <TextInput
-                  style={styles.editInput}
-                  value={editAmount}
-                  onChangeText={setEditAmount}
-                  keyboardType="number-pad"
-                  placeholder="Enter new amount"
-                  placeholderTextColor={Colors.textMuted}
-                  autoFocus
-                />
-
-                {/* Description */}
-                <Text style={styles.editFieldLabel}>Description (optional)</Text>
-                <TextInput
-                  style={[styles.editInput, { minHeight: 44 }]}
-                  value={editDesc}
-                  onChangeText={setEditDesc}
-                  placeholder="Add note..."
-                  placeholderTextColor={Colors.textMuted}
-                  multiline
-                />
-
-                {/* Actions */}
-                <View style={styles.editActions}>
-                  <Pressable style={styles.editCancelBtn} onPress={() => setEditModal(false)}>
-                    <Text style={styles.editCancelText}>Cancel</Text>
-                  </Pressable>
-                  <Pressable
-                    style={[styles.editSaveBtn, editLoading && { opacity: 0.7 }]}
-                    onPress={submitEdit}
-                    disabled={editLoading}
-                  >
-                    {editLoading ? (
-                      <ActivityIndicator size="small" color="#fff" />
-                    ) : (
-                      <>
-                        <MaterialIcons name="check" size={16} color="#fff" />
-                        <Text style={styles.editSaveText}>Update & Receipt</Text>
-                      </>
-                    )}
-                  </Pressable>
-                </View>
-
-                <Text style={styles.editNote}>Updated receipt will be generated automatically so you can share with shopkeeper.</Text>
-              </>
-            )}
-          </View>
-        </View>
-      </Modal>
-
-      {/* ── Regenerated Receipt Modal ── */}
-      <ReceiptModal
-        visible={receiptVisible}
-        receipt={regeneratedReceipt}
-        onClose={() => {
-          setReceiptVisible(false);
-          setRegeneratedReceipt(null);
-        }}
-      />
     </View>
   );
 }
@@ -395,14 +224,6 @@ const styles = StyleSheet.create({
   txnDate: { fontSize: FontSize.xs, color: Colors.textMuted, marginTop: 1 },
   txnDesc: { fontSize: FontSize.xs, color: Colors.textMuted, marginTop: 1 },
   txnAmount: { fontSize: FontSize.sm, fontWeight: FontWeight.bold },
-
-  // Edit button on pending transaction
-  editBtn: {
-    width: 24, height: 24, borderRadius: 12,
-    backgroundColor: 'rgba(245,158,11,0.12)',
-    alignItems: 'center', justifyContent: 'center',
-  },
-
   selectorModal: { flex: 1, backgroundColor: Colors.bg },
   selectorHeader: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
@@ -425,111 +246,4 @@ const styles = StyleSheet.create({
   shopItemName: { fontSize: FontSize.sm, fontWeight: FontWeight.semibold, color: Colors.textPrimary },
   shopItemSub: { fontSize: FontSize.xs, color: Colors.textMuted, marginTop: 1 },
   shopItemBalance: { fontSize: FontSize.sm, fontWeight: FontWeight.bold, color: Colors.warning },
-
-  // ── Edit Pending Modal ──
-  editOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  editContainer: {
-    width: '100%',
-    maxWidth: 380,
-    backgroundColor: Colors.bg,
-    borderRadius: 16,
-    padding: 20,
-  },
-  editHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  editTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: Colors.textPrimary,
-  },
-  editShopName: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: Colors.primary,
-    marginBottom: 12,
-  },
-  editOldRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    backgroundColor: Colors.surface,
-    padding: 10,
-    borderRadius: 8,
-    marginBottom: 14,
-  },
-  editOldLabel: {
-    fontSize: 13,
-    color: Colors.textMuted,
-  },
-  editOldValue: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: Colors.warning,
-  },
-  editFieldLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: Colors.textSecondary,
-    marginBottom: 4,
-  },
-  editInput: {
-    backgroundColor: Colors.surface,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 15,
-    color: Colors.textPrimary,
-    marginBottom: 12,
-  },
-  editActions: {
-    flexDirection: 'row',
-    gap: 10,
-    marginTop: 4,
-  },
-  editCancelBtn: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    alignItems: 'center',
-  },
-  editCancelText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: Colors.textSecondary,
-  },
-  editSaveBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    paddingVertical: 12,
-    borderRadius: 10,
-    backgroundColor: Colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-  },
-  editSaveText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#fff',
-  },
-  editNote: {
-    fontSize: 10,
-    color: Colors.textMuted,
-    textAlign: 'center',
-    marginTop: 10,
-    lineHeight: 14,
-  },
 });

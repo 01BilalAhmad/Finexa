@@ -168,23 +168,6 @@ export const StorageService = {
     const remaining = queue.slice(count);
     await AsyncStorage.setItem(APP_STORAGE_KEYS.WAYPOINTS, JSON.stringify(remaining));
   },
-  // ─── Offline Phone/Owner Updates ──────────────────────────────────────
-  async getOfflinePhoneUpdates(): Promise<Array<{ shopId: string; phone: string; ownerName?: string; createdAt: string }>> {
-    const v = await AsyncStorage.getItem(APP_STORAGE_KEYS.OFFLINE_PHONE_UPDATES);
-    return v ? JSON.parse(v) : [];
-  },
-  async addOfflinePhoneUpdate(update: { shopId: string; phone: string; ownerName?: string; createdAt: string }) {
-    const list = await StorageService.getOfflinePhoneUpdates();
-    // Remove any existing update for same shop
-    const filtered = list.filter(u => u.shopId !== update.shopId);
-    filtered.push(update);
-    await AsyncStorage.setItem(APP_STORAGE_KEYS.OFFLINE_PHONE_UPDATES, JSON.stringify(filtered));
-  },
-  async removeOfflinePhoneUpdate(shopId: string) {
-    const list = await StorageService.getOfflinePhoneUpdates();
-    await AsyncStorage.setItem(APP_STORAGE_KEYS.OFFLINE_PHONE_UPDATES, JSON.stringify(list.filter(u => u.shopId !== shopId)));
-  },
-
   async getGpsQueueCount(): Promise<number> {
     const queue = await StorageService.getGpsQueue();
     return queue.length;

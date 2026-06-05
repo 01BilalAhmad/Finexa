@@ -31,11 +31,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   async function restoreSession() {
     try {
-      const [cachedUser, cachedToken, cachedCompanyId, cachedDistPhone] = await Promise.all([
+      const [cachedUser, cachedToken, cachedCompanyId] = await Promise.all([
         StorageService.getUser(),
         StorageService.getToken(),
         StorageService.getSelectedCompany(),
-        StorageService.getDistributorPhone(),
       ]);
       if (cachedUser && cachedToken) {
         setUser(cachedUser);
@@ -45,8 +44,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const company = cachedUser.companies.find(c => c.id === companyId) || cachedUser.companies[0];
         if (company) {
           setSelectedCompanyState(company);
-          // Prefer locally saved distributorPhone (survives app restart), fallback to company object
-          setDistributorPhone(cachedDistPhone || company.distributorPhone || '');
+          setDistributorPhone(company.distributorPhone || '');
         }
       }
     } catch (e) {
@@ -62,13 +60,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setAuthToken(newToken);
     const company = newUser.companies[0] || null;
     setSelectedCompanyState(company);
-    const distPhone = company?.distributorPhone || '';
-    setDistributorPhone(distPhone);
+    if (company) setDistributorPhone(company.distributorPhone || '');
     await Promise.all([
       StorageService.saveUser(newUser),
       StorageService.saveToken(newToken),
       company ? StorageService.saveSelectedCompany(company.id) : Promise.resolve(),
-      distPhone ? StorageService.saveDistributorPhone(distPhone) : Promise.resolve(),
     ]);
   }
 
@@ -83,12 +79,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   async function setSelectedCompany(company: Company) {
     setSelectedCompanyState(company);
-    const distPhone = company.distributorPhone || '';
-    setDistributorPhone(distPhone);
-    await Promise.all([
-      StorageService.saveSelectedCompany(company.id),
-      distPhone ? StorageService.saveDistributorPhone(distPhone) : Promise.resolve(),
-    ]);
+    setDistributorPhone(company.distributorPhone || '');
+    await StorageService.saveSelectedCompany(company.id);
   }
 
   function updateUser(updates: Partial<User>) {

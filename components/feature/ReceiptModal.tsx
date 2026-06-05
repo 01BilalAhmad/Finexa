@@ -1,30 +1,12 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
-  View, Text, Pressable, StyleSheet, Modal, ActivityIndicator,
-  ScrollView, Alert, Linking,
+  View, Text, Modal, StyleSheet, Pressable, ScrollView, Animated,
 } from 'react-native';
-import { MaterialIcons, MaterialCommunityIcons } from '@expo/vector-icons';
-import { captureRef } from 'react-native-view-shot';
-import * as MediaLibrary from 'expo-media-library';
-import * as Print from 'expo-print';
-import * as Sharing from 'expo-sharing';
+import { MaterialIcons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ReceiptData } from '@/types';
 import { Colors, FontSize, FontWeight, Radius, Spacing } from '@/constants/theme';
-import { formatPKRFull, formatDate, formatTime } from '@/utils/format';
-import { ShopInfoPrompt } from '@/components/feature/ShopInfoPrompt';
-import { generateReceiptHTML } from '@/services/receipt';
-
-// ── Reference Receipt Color Palette ──────────────────────────────────────
-const R = {
-  bg: '#3F3D9B',              // Royal blue background
-  bgDark: '#2E2C7A',          // Darker blue for balance box
-  white: '#FFFFFF',
-  teal: '#4ECDC4',            // Light teal for highlights
-  yellow: '#FFD166',          // Yellow for remaining balance
-  gray: '#B8B8D4',            // Muted text on blue
-  divider: 'rgba(255,255,255,0.15)',
-  iconBg: 'rgba(255,255,255,0.12)',
-};
+import { formatPKRFull, formatDate } from '@/utils/format';
 
 interface ReceiptModalProps {
   visible: boolean;
@@ -34,368 +16,192 @@ interface ReceiptModalProps {
   undoAvailable?: boolean;
 }
 
+const UNDO_WINDOW_MS = 4000;
+
 export function ReceiptModal({ visible, receipt, onClose, onUndo, undoAvailable }: ReceiptModalProps) {
-  const receiptRef = useRef<View>(null);
-  const [gallerySaved, setGallerySaved] = useState(false);
-  const [savingGallery, setSavingGallery] = useState(false);
-  const [whatsApping, setWhatsApping] = useState(false);
-  const [printing, setPrinting] = useState(false);
-  const [showInfoPrompt, setShowInfoPrompt] = useState(false);
-  const [updatedReceipt, setUpdatedReceipt] = useState<ReceiptData | null>(null);
+  const insets = useSafeAreaInsets();
+  const [undoTimeLeft, setUndoTimeLeft] = useState(UNDO_WINDOW_MS / 1000);
+  const [undoExpired, setUndoExpired] = useState(false);
+  const undoProgress = useRef(new Animated.Value(1)).current;
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const animRef = useRef<Animated.CompositeAnimation | null>(null);
 
-  const activeReceipt = updatedReceipt || receipt;
-
-  // Check if shop info is missing when modal opens
   useEffect(() => {
-    if (visible && receipt) {
-      setUpdatedReceipt(null);
-      setGallerySaved(false);
-      const missingOwner = !receipt.ownerName || receipt.ownerName.trim() === '';
-      const missingPhone = !receipt.shopPhone || receipt.shopPhone.trim() === '';
-      if (missingOwner || missingPhone) {
-        setShowInfoPrompt(true);
-      }
-    }
-  }, [visible, receipt?.transactionId]);
+    if (visible && undoAvailable) {
+      setUndoTimeLeft(UNDO_WINDOW_MS / 1000);
+      setUndoExpired(false);
+      undoProgress.setValue(1);
 
-  // Auto-save to gallery when receipt becomes visible (after info prompt if needed)
-  useEffect(() => {
-    if (visible && activeReceipt && !showInfoPrompt && !gallerySaved && !savingGallery) {
-      const timer = setTimeout(() => saveToGallery(), 800);
-      return () => clearTimeout(timer);
-    }
-  }, [visible, activeReceipt, showInfoPrompt]);
+      // Countdown timer
+      timerRef.current = setInterval(() => {
+        setUndoTimeLeft(prev => {
+          if (prev <= 1) {
+            clearInterval(timerRef.current!);
+            setUndoExpired(true);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
 
-  async function saveToGallery() {
-    if (!receiptRef.current || gallerySaved) return;
-    setSavingGallery(true);
-    try {
-      const { status } = await MediaLibrary.requestPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert('Permission Needed', 'Please allow photo library access to save receipt.');
-        setSavingGallery(false);
-        return;
-      }
-      const uri = await captureRef(receiptRef, {
-        format: 'png',
-        quality: 1,
-        result: 'tmpfile',
+      // Animate progress bar
+      animRef.current = Animated.timing(undoProgress, {
+        toValue: 0,
+        duration: UNDO_WINDOW_MS,
+        useNativeDriver: false,
       });
-      await MediaLibrary.createAssetAsync(uri);
-      setGallerySaved(true);
-    } catch (e: any) {
-      console.error('Gallery save error:', e);
-    } finally {
-      setSavingGallery(false);
+      animRef.current.start();
     }
-  }
 
-  async function handleWhatsApp() {
-    if (!activeReceipt) return;
-    setWhatsApping(true);
-    try {
-      const r = activeReceipt;
-      const dateStr = formatDate(r.date);
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+      if (animRef.current) animRef.current.stop();
+    };
+  }, [visible]);
 
-      const text = [
-        `*${r.companyName}*`,
-        `Distributor No: ${r.distributorPhone || 'N/A'}`,
-        `━━━━━━━━━━━━━━━━━━`,
-        `*Payment Receipt*`,
-        ``,
-        `Shop: ${r.shopName}`,
-        `Owner: ${r.ownerName || 'N/A'}`,
-        `Address: ${r.address || 'N/A'}`,
-        `Orderbooker: ${r.orderbookerName}`,
-        `Date: ${dateStr}`,
-        `━━━━━━━━━━━━━━━━━━`,
-        `Opening Balance: Rs. ${r.openingBalance.toLocaleString('en-PK')}`,
-        `Payment Received: Rs. ${r.paymentAmount.toLocaleString('en-PK')}`,
-        `*Remaining Balance: Rs. ${r.remainingBalance.toLocaleString('en-PK')}*`,
-        `━━━━━━━━━━━━━━━━━━`,
-        `Txn: ${r.transactionId || 'Pending (offline)'}`,
-        ``,
-        `Thank you for your Payment!`,
-        `Receipt image saved in gallery. Please attach it.`,
-      ].join('\n');
-
-      const phone = r.shopPhone;
-      let whatsappUrl: string;
-
-      if (phone) {
-        const formattedPhone = phone.replace(/^0/, '92').replace(/\s/g, '');
-        whatsappUrl = `whatsapp://send?phone=${formattedPhone}&text=${encodeURIComponent(text)}`;
-      } else {
-        whatsappUrl = `whatsapp://send?text=${encodeURIComponent(text)}`;
-      }
-
-      const supported = await Linking.canOpenURL(whatsappUrl);
-      if (supported) {
-        await Linking.openURL(whatsappUrl);
-      } else {
-        Alert.alert('WhatsApp Not Installed', 'Please install WhatsApp to share receipt.');
-      }
-    } catch (e: any) {
-      Alert.alert('Error', e?.message || 'Could not share via WhatsApp');
-    } finally {
-      setWhatsApping(false);
-    }
-  }
-
-  async function handleSMS() {
-    if (!activeReceipt) return;
-    try {
-      const r = activeReceipt;
-      const phone = r.shopPhone;
-      if (!phone) {
-        Alert.alert('No Phone', 'Shop phone number is not available.');
-        return;
-      }
-      const dateStr = formatDate(r.date);
-      const text = [
-        `${r.companyName} - Payment Receipt`,
-        `Shop: ${r.shopName}`,
-        `Payment: Rs. ${r.paymentAmount.toLocaleString('en-PK')}`,
-        `Remaining: Rs. ${r.remainingBalance.toLocaleString('en-PK')}`,
-        `Date: ${dateStr}`,
-        `Txn: ${r.transactionId || 'Pending'}`,
-      ].join('\n');
-
-      const smsUrl = `sms:${phone}?body=${encodeURIComponent(text)}`;
-      await Linking.openURL(smsUrl);
-    } catch (e: any) {
-      Alert.alert('Error', 'Could not open SMS app');
-    }
-  }
-
-  async function handlePrint() {
-    if (!activeReceipt) return;
-    setPrinting(true);
-    try {
-      const html = generateReceiptHTML(activeReceipt);
-      await Print.printAsync({ html });
-    } catch (e: any) {
-      Alert.alert('Print Error', e?.message || 'Could not print receipt');
-    } finally {
-      setPrinting(false);
-    }
-  }
-
-  function handleInfoDone(updatedInfo: { ownerName?: string; phone?: string }) {
-    setShowInfoPrompt(false);
-    if (activeReceipt) {
-      setUpdatedReceipt({
-        ...activeReceipt,
-        ownerName: updatedInfo.ownerName || activeReceipt.ownerName,
-        shopPhone: updatedInfo.phone || activeReceipt.shopPhone,
-      });
-    }
-  }
-
-  function handleInfoSkip() {
-    setShowInfoPrompt(false);
-  }
-
-  if (!activeReceipt) return null;
-
-  const dateStr = formatDate(activeReceipt.date);
+  if (!receipt) return null;
 
   return (
-    <Modal visible={visible} transparent animationType="slide">
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={onClose}
+    >
       <View style={styles.overlay}>
-        <View style={styles.container}>
-          {/* Close button */}
-          <Pressable onPress={onClose} style={styles.closeBtn} hitSlop={8}>
-            <MaterialIcons name="close" size={22} color={R.gray} />
-          </Pressable>
-
-          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-
-            {/* Gallery Save Status */}
-            <View style={styles.galleryStatus}>
-              {savingGallery ? (
-                <><ActivityIndicator size="small" color={R.teal} /><Text style={[styles.galleryText, { color: R.teal }]}>Saving to gallery...</Text></>
-              ) : gallerySaved ? (
-                <><MaterialIcons name="check-circle" size={16} color={R.teal} /><Text style={[styles.galleryText, { color: R.teal }]}>Receipt saved to gallery</Text></>
-              ) : (
-                <><MaterialIcons name="photo-library" size={16} color={R.gray} /><Text style={styles.galleryText}>Saving receipt...</Text></>
-              )}
+        <View style={[styles.container, { paddingBottom: insets.bottom + 8 }]}>
+          {/* Success Header */}
+          <View style={styles.successHeader}>
+            <View style={styles.successIconCircle}>
+              <MaterialIcons name="check-circle" size={36} color={Colors.success} />
             </View>
+            <Text style={styles.successTitle}>Recovery Submitted!</Text>
+            <Text style={styles.successAmount}>{formatPKRFull(receipt.paymentAmount)}</Text>
+            <Text style={styles.successShop}>{receipt.shopName}</Text>
+          </View>
 
-            {/* ── Receipt Card (captured as image) ────────────────── */}
-            <View ref={receiptRef} collapsable={false} style={styles.receiptCaptureArea}>
-              <View style={styles.receiptCard}>
-
-                {/* ── HEADER ── */}
-                <View style={styles.receiptHeader}>
-                  {/* Company Name with icon */}
-                  <View style={styles.headerRow}>
-                    <MaterialCommunityIcons name="bank" size={22} color={R.white} />
-                    <Text style={styles.companyName}>{activeReceipt.companyName}</Text>
-                  </View>
-
-                  {/* Shop Name (teal) */}
-                  <Text style={styles.shopNameHighlight}>{activeReceipt.shopName}</Text>
-                  <Text style={styles.receiptLabel}>Payment Receipt</Text>
-
-                  {/* Distributor No */}
-                  <View style={styles.distRow}>
-                    <MaterialIcons name="phone" size={16} color={R.teal} />
-                    <Text style={styles.distText}>Distributor No: <Text style={styles.distValue}>{activeReceipt.distributorPhone || 'N/A'}</Text></Text>
-                  </View>
-                </View>
-
-                {/* Divider */}
-                <View style={styles.divider} />
-
-                {/* ── SHOP DETAILS ── */}
-                <View style={styles.detailsSection}>
-                  {/* Shop */}
-                  <View style={styles.detailItem}>
-                    <View style={styles.iconCircle}>
-                      <MaterialIcons name="store" size={14} color={R.white} />
-                    </View>
-                    <Text style={styles.detailLabel}>Shop:</Text>
-                    <Text style={styles.detailValue}>{activeReceipt.shopName}</Text>
-                  </View>
-
-                  {/* Address */}
-                  <View style={styles.detailItem}>
-                    <View style={styles.iconCircle}>
-                      <MaterialIcons name="location-on" size={14} color={R.white} />
-                    </View>
-                    <Text style={styles.detailLabel}>Address:</Text>
-                    <Text style={styles.detailValue}>{activeReceipt.address || 'N/A'}</Text>
-                  </View>
-
-                  {/* Owner */}
-                  <View style={styles.detailItem}>
-                    <View style={styles.iconCircle}>
-                      <MaterialIcons name="person" size={14} color={R.white} />
-                    </View>
-                    <Text style={styles.detailLabel}>Owner:</Text>
-                    <Text style={styles.detailValue}>{activeReceipt.ownerName || 'N/A'}</Text>
-                  </View>
-
-                  {/* Date */}
-                  <View style={styles.detailItem}>
-                    <View style={styles.iconCircle}>
-                      <MaterialIcons name="calendar-today" size={14} color={R.white} />
-                    </View>
-                    <Text style={styles.detailLabel}>Date:</Text>
-                    <Text style={styles.detailValue}>{dateStr}</Text>
-                  </View>
-
-                  {/* Orderbooker */}
-                  <View style={styles.detailItem}>
-                    <View style={styles.iconCircle}>
-                      <MaterialIcons name="badge" size={14} color={R.white} />
-                    </View>
-                    <Text style={styles.detailLabel}>Orderbooker:</Text>
-                    <Text style={styles.detailValue}>{activeReceipt.orderbookerName}</Text>
-                  </View>
-                </View>
-
-                {/* ── BALANCE BOX ── */}
-                <View style={styles.balanceBox}>
-                  <View style={styles.balRow}>
-                    <Text style={styles.balLabel}>Opening Balance</Text>
-                    <Text style={styles.balValue}>Rs. {activeReceipt.openingBalance.toLocaleString('en-PK')}</Text>
-                  </View>
-                  <View style={styles.balRow}>
-                    <Text style={styles.balLabel}>Payment Received</Text>
-                    <Text style={[styles.balValue, { color: R.teal, fontWeight: '700' }]}>Rs. {activeReceipt.paymentAmount.toLocaleString('en-PK')}</Text>
-                  </View>
-                  <View style={[styles.balRow, styles.balRowTotal]}>
-                    <Text style={[styles.balLabel, { fontWeight: '700' }]}>Remaining Balance</Text>
-                    <Text style={styles.balValueTotal}>Rs. {activeReceipt.remainingBalance.toLocaleString('en-PK')}</Text>
-                  </View>
-                </View>
-
-                {/* ── THANK YOU ── */}
-                <View style={styles.thankSection}>
-                  <MaterialIcons name="check-circle" size={18} color={R.teal} />
-                  <Text style={styles.thankText}>Thank you for your Payment!</Text>
-                </View>
-
-                {/* Divider */}
-                <View style={styles.divider} />
-
-                {/* ── URDU FOOTER ── */}
-                <View style={styles.urduSection}>
-                  <Text style={styles.urduText2}>
-                    اگر آپ کو بلنس میں کسی قسم کا کوئی فرق محسوس ہوتا ہے تو اوپر دیے گئے نمبر پر لازمی رابطہ کریں شکریہ
-                  </Text>
-                </View>
-              </View>
-            </View>
-
-            {/* ── Share Actions ──────────────────────────────────── */}
-            <View style={styles.shareSection}>
-              <Text style={styles.shareTitle}>Send Receipt</Text>
-              <View style={styles.actions}>
-                <Pressable style={[styles.actionBtn, styles.whatsappBtn]} onPress={handleWhatsApp} disabled={whatsApping}>
-                  {whatsApping ? (
-                    <ActivityIndicator size="small" color="#25D366" />
-                  ) : (
-                    <MaterialIcons name="chat" size={22} color="#25D366" />
-                  )}
-                  <Text style={[styles.actionBtnText, { color: '#25D366' }]}>WhatsApp</Text>
-                </Pressable>
-
-                <Pressable style={[styles.actionBtn, styles.smsBtn]} onPress={handleSMS}>
-                  <MaterialIcons name="sms" size={22} color={R.bg} />
-                  <Text style={[styles.actionBtnText, { color: R.bg }]}>SMS</Text>
-                </Pressable>
-
-                <Pressable style={[styles.actionBtn, styles.printBtn]} onPress={handlePrint} disabled={printing}>
-                  {printing ? (
-                    <ActivityIndicator size="small" color={R.gray} />
-                  ) : (
-                    <MaterialIcons name="print" size={22} color={R.gray} />
-                  )}
-                  <Text style={[styles.actionBtnText, { color: '#555' }]}>Print</Text>
+          {/* Undo Bar */}
+          {!undoExpired && onUndo && (
+            <View style={styles.undoSection}>
+              <Animated.View
+                style={[
+                  styles.undoProgressBar,
+                  { width: undoProgress.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] }) },
+                ]}
+              />
+              <View style={styles.undoContent}>
+                <Text style={styles.undoText}>Undo available for {undoTimeLeft}s</Text>
+                <Pressable
+                  onPress={onUndo}
+                  style={({ pressed }) => [styles.undoBtn, pressed && { opacity: 0.7 }]}
+                >
+                  <MaterialIcons name="undo" size={14} color={Colors.warning} />
+                  <Text style={styles.undoBtnText}>Undo</Text>
                 </Pressable>
               </View>
-              <Text style={styles.shareHint}>
-                Receipt image saved in gallery — attach it when sending via WhatsApp
-              </Text>
             </View>
+          )}
 
-            {/* Undo */}
-            {undoAvailable && onUndo && (
-              <Pressable onPress={onUndo} style={styles.undoRow}>
-                <MaterialIcons name="undo" size={16} color={R.gray} />
-                <Text style={styles.undoText}>Undo this recovery</Text>
-              </Pressable>
-            )}
+          {/* Receipt */}
+          <ScrollView style={styles.receiptScroll} showsVerticalScrollIndicator={false}>
+            <View style={styles.receipt}>
+              {/* Receipt Header */}
+              <View style={styles.receiptHeader}>
+                <Text style={styles.receiptTitle}>AL-FALAH CREDIT SYSTEM</Text>
+                <Text style={styles.receiptCompany}>{receipt.companyName}</Text>
+                <View style={styles.receiptDivider} />
+                <Text style={styles.receiptLabel}>PAYMENT RECEIPT</Text>
+              </View>
+
+              {/* Distributor Phone */}
+              <View style={styles.receiptRow}>
+                <Text style={styles.receiptKey}>Distributor</Text>
+                <Text style={styles.receiptVal}>{receipt.distributorPhone || '-'}</Text>
+              </View>
+
+              <View style={styles.receiptDividerThin} />
+
+              {/* Shop Info */}
+              <View style={styles.receiptRow}>
+                <Text style={styles.receiptKey}>Shop</Text>
+                <Text style={[styles.receiptVal, { maxWidth: '60%', textAlign: 'right' }]}>{receipt.shopName}</Text>
+              </View>
+              {receipt.ownerName ? (
+                <View style={styles.receiptRow}>
+                  <Text style={styles.receiptKey}>Owner</Text>
+                  <Text style={styles.receiptVal}>{receipt.ownerName}</Text>
+                </View>
+              ) : null}
+              {receipt.address ? (
+                <View style={styles.receiptRow}>
+                  <Text style={styles.receiptKey}>Address</Text>
+                  <Text style={[styles.receiptVal, { maxWidth: '60%', textAlign: 'right' }]}>{receipt.address}</Text>
+                </View>
+              ) : null}
+
+              <View style={styles.receiptDividerThin} />
+
+              {/* Transaction Info */}
+              <View style={styles.receiptRow}>
+                <Text style={styles.receiptKey}>Date</Text>
+                <Text style={styles.receiptVal}>{formatDate(receipt.date)}</Text>
+              </View>
+              <View style={styles.receiptRow}>
+                <Text style={styles.receiptKey}>Collected By</Text>
+                <Text style={styles.receiptVal}>{receipt.orderbookerName}</Text>
+              </View>
+
+              <View style={styles.receiptDividerThin} />
+
+              {/* Balance Details */}
+              <View style={styles.receiptRow}>
+                <Text style={styles.receiptKey}>Opening Balance</Text>
+                <Text style={[styles.receiptVal, { color: Colors.warning }]}>
+                  {formatPKRFull(receipt.openingBalance)}
+                </Text>
+              </View>
+              <View style={styles.receiptRow}>
+                <Text style={styles.receiptKey}>Payment Received</Text>
+                <Text style={[styles.receiptVal, { color: Colors.success, fontWeight: FontWeight.bold }]}>
+                  - {formatPKRFull(receipt.paymentAmount)}
+                </Text>
+              </View>
+
+              <View style={styles.receiptDivider} />
+
+              <View style={styles.receiptRow}>
+                <Text style={[styles.receiptKey, { fontSize: FontSize.md, fontWeight: FontWeight.bold, color: Colors.textPrimary }]}>
+                  Remaining Balance
+                </Text>
+                <Text style={[styles.receiptVal, {
+                  fontSize: FontSize.md,
+                  fontWeight: FontWeight.bold,
+                  color: receipt.remainingBalance > 0 ? Colors.warning : Colors.success,
+                }]}>
+                  {formatPKRFull(receipt.remainingBalance)}
+                </Text>
+              </View>
+
+              {/* Thank You */}
+              <View style={styles.thankYou}>
+                <Text style={styles.thankYouText}>Thank You</Text>
+                <Text style={styles.thankYouUrdu}>کسی بھی اختلاف کے لیے ڈسٹریبیوٹر سے رابطہ کریں</Text>
+              </View>
+            </View>
           </ScrollView>
 
-          {/* Done Button */}
-          <Pressable onPress={onClose} style={styles.doneBtn}>
-            <Text style={styles.doneBtnText}>Done</Text>
-          </Pressable>
+          {/* Actions */}
+          <View style={styles.actions}>
+            <Pressable
+              onPress={onClose}
+              style={({ pressed }) => [styles.closeBtn, pressed && { opacity: 0.8 }]}
+            >
+              <MaterialIcons name="check" size={18} color="#fff" />
+              <Text style={styles.closeBtnText}>Done</Text>
+            </Pressable>
+          </View>
         </View>
       </View>
-
-      {/* Shop Info Prompt — if phone/owner missing, shown AFTER recovery */}
-      <ShopInfoPrompt
-        visible={showInfoPrompt}
-        shop={activeReceipt ? {
-          id: activeReceipt.shopId,
-          name: activeReceipt.shopName,
-          ownerName: activeReceipt.ownerName || '',
-          area: '',
-          address: activeReceipt.address,
-          phone: activeReceipt.shopPhone,
-          routeDays: [],
-          balance: activeReceipt.openingBalance,
-          creditLimit: 0,
-          companyBalances: [],
-        } : null}
-        onDone={handleInfoDone}
-        onSkip={handleInfoSkip}
-      />
     </Modal>
   );
 }
@@ -403,276 +209,189 @@ export function ReceiptModal({ visible, receipt, onClose, onUndo, undoAvailable 
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
+    backgroundColor: 'rgba(0,0,0,0.85)',
     justifyContent: 'flex-end',
   },
   container: {
-    backgroundColor: '#1A1A3E',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    backgroundColor: Colors.surface,
+    borderTopLeftRadius: Radius.xl,
+    borderTopRightRadius: Radius.xl,
     maxHeight: '92%',
-    paddingTop: 8,
+    borderTopWidth: 1,
+    borderColor: Colors.border,
   },
-  closeBtn: {
-    alignSelf: 'flex-end',
-    marginRight: 16,
-    marginTop: 4,
-    padding: 8,
-  },
-  scrollContent: {
-    paddingHorizontal: 16,
-    paddingBottom: 16,
+  successHeader: {
     alignItems: 'center',
+    paddingTop: Spacing.lg,
+    paddingBottom: Spacing.md,
+    paddingHorizontal: Spacing.md,
   },
-
-  // Gallery status
-  galleryStatus: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    marginBottom: 12,
-  },
-  galleryText: {
-    fontSize: 12, color: R.gray, fontWeight: '500',
-  },
-
-  // Receipt capture area
-  receiptCaptureArea: {
-    width: '100%',
-  },
-
-  // Receipt Card — BLUE background matching reference
-  receiptCard: {
-    width: '100%',
-    backgroundColor: R.bg,
-    borderRadius: 16,
-    overflow: 'hidden',
-    paddingBottom: 16,
-  },
-
-  // ── HEADER ──
-  receiptHeader: {
+  successIconCircle: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: Colors.successMuted,
     alignItems: 'center',
-    paddingTop: 20,
-    paddingHorizontal: 20,
-    paddingBottom: 16,
+    justifyContent: 'center',
+    marginBottom: Spacing.sm,
+    borderWidth: 1,
+    borderColor: Colors.success + '40',
   },
-  headerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 8,
+  successTitle: {
+    fontSize: FontSize.lg,
+    fontWeight: FontWeight.bold,
+    color: Colors.textPrimary,
+    marginBottom: 4,
   },
-  companyName: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: R.white,
-    textTransform: 'uppercase',
+  successAmount: {
+    fontSize: FontSize.xxxl,
+    fontWeight: FontWeight.extrabold,
+    color: Colors.success,
     letterSpacing: 0.5,
   },
-  shopNameHighlight: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: R.teal,
-    marginBottom: 2,
-  },
-  receiptLabel: {
-    fontSize: 13,
-    color: R.white,
-    fontWeight: '500',
-    marginBottom: 12,
-  },
-  distRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: R.iconBg,
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    borderRadius: 20,
-  },
-  distText: {
-    fontSize: 13,
-    color: R.gray,
-  },
-  distValue: {
-    fontWeight: '700',
-    color: R.white,
-    fontSize: 15,
-  },
-
-  // Divider
-  divider: {
-    height: 1,
-    backgroundColor: R.divider,
-    marginHorizontal: 20,
-  },
-
-  // ── SHOP DETAILS ──
-  detailsSection: {
-    paddingHorizontal: 20,
-    paddingTop: 14,
-    paddingBottom: 10,
-  },
-  detailItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingVertical: 5,
-  },
-  iconCircle: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    backgroundColor: R.iconBg,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  detailLabel: {
-    fontSize: 13,
-    color: R.gray,
-    fontWeight: '500',
-    minWidth: 90,
-  },
-  detailValue: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: R.white,
-    flex: 1,
-    textAlign: 'right',
-  },
-
-  // ── BALANCE BOX ──
-  balanceBox: {
-    marginHorizontal: 16,
-    marginVertical: 10,
-    backgroundColor: R.bgDark,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
-    padding: 16,
-  },
-  balRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 6,
-  },
-  balLabel: {
-    fontSize: 14,
-    color: R.gray,
-    fontWeight: '500',
-  },
-  balValue: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: R.white,
-  },
-  balRowTotal: {
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(255,255,255,0.2)',
+  successShop: {
+    fontSize: FontSize.sm,
+    color: Colors.textSecondary,
     marginTop: 4,
-    paddingTop: 10,
-  },
-  balValueTotal: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: R.yellow,
-  },
-
-  // ── THANK YOU ──
-  thankSection: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 10,
-  },
-  thankText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: R.teal,
-  },
-
-  // ── URDU SECTION ──
-  urduSection: {
-    paddingHorizontal: 16,
-    paddingTop: 8,
-    paddingBottom: 4,
-  },
-  urduText2: {
-    fontSize: 12,
-    color: R.white,
-    fontWeight: '700',
-    textAlign: 'right',
-    writingDirection: 'rtl',
-    lineHeight: 20,
-  },
-
-  // ── SHARE SECTION ──
-  shareSection: {
-    width: '100%',
-    marginTop: 16,
-  },
-  shareTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: R.gray,
-    marginBottom: 10,
-    textAlign: 'center',
-  },
-  actions: {
-    flexDirection: 'row',
-    gap: 10,
-    width: '100%',
-  },
-  actionBtn: {
-    flex: 1,
-    flexDirection: 'column',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 4,
-    paddingVertical: 14,
-    borderRadius: 12,
-    borderWidth: 1.5,
-  },
-  whatsappBtn: {
-    backgroundColor: 'rgba(37,211,102,0.15)',
-    borderColor: '#25D366',
-  },
-  smsBtn: {
-    backgroundColor: 'rgba(78,205,196,0.15)',
-    borderColor: R.teal,
-  },
-  printBtn: {
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    borderColor: 'rgba(255,255,255,0.2)',
-  },
-  actionBtnText: {
-    fontSize: 12, fontWeight: '700',
-  },
-  shareHint: {
-    fontSize: 10, color: R.gray, textAlign: 'center',
-    marginTop: 10, lineHeight: 14,
   },
 
   // Undo
-  undoRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    marginTop: 12, paddingVertical: 4,
+  undoSection: {
+    marginHorizontal: Spacing.md,
+    marginBottom: Spacing.sm,
+    backgroundColor: Colors.surfaceElevated,
+    borderRadius: Radius.md,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: Colors.warningMuted,
+  },
+  undoProgressBar: {
+    height: 3,
+    backgroundColor: Colors.warning,
+  },
+  undoContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
   },
   undoText: {
-    fontSize: 12, color: R.gray, fontWeight: '500',
+    fontSize: FontSize.xs,
+    color: Colors.textMuted,
+  },
+  undoBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: Colors.warningMuted,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: Radius.sm,
+  },
+  undoBtnText: {
+    fontSize: FontSize.sm,
+    fontWeight: FontWeight.semibold,
+    color: Colors.warning,
   },
 
-  // Done
-  doneBtn: {
-    marginHorizontal: 16,
-    marginBottom: 20,
-    paddingVertical: 14,
-    backgroundColor: R.teal,
-    borderRadius: 12,
-    alignItems: 'center',
+  // Receipt
+  receiptScroll: {
+    flex: 1,
+    marginHorizontal: Spacing.md,
   },
-  doneBtnText: {
-    fontSize: 16, fontWeight: '700', color: '#1A1A3E',
+  receipt: {
+    backgroundColor: Colors.surfaceElevated,
+    borderRadius: Radius.lg,
+    padding: Spacing.md,
+    borderWidth: 1,
+    borderColor: Colors.borderLight,
+    marginBottom: Spacing.sm,
+  },
+  receiptHeader: {
+    alignItems: 'center',
+    marginBottom: Spacing.sm,
+  },
+  receiptTitle: {
+    fontSize: FontSize.sm,
+    fontWeight: FontWeight.extrabold,
+    color: Colors.primary,
+    letterSpacing: 1,
+  },
+  receiptCompany: {
+    fontSize: FontSize.xs,
+    color: Colors.textSecondary,
+    marginTop: 2,
+  },
+  receiptLabel: {
+    fontSize: FontSize.xs,
+    fontWeight: FontWeight.semibold,
+    color: Colors.textMuted,
+    letterSpacing: 2,
+    marginTop: 4,
+  },
+  receiptDivider: {
+    height: 1,
+    backgroundColor: Colors.border,
+    marginVertical: 8,
+  },
+  receiptDividerThin: {
+    height: 1,
+    backgroundColor: Colors.border + '60',
+    marginVertical: 6,
+  },
+  receiptRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginVertical: 3,
+  },
+  receiptKey: {
+    fontSize: FontSize.xs,
+    color: Colors.textMuted,
+    flex: 1,
+  },
+  receiptVal: {
+    fontSize: FontSize.xs,
+    color: Colors.textSecondary,
+    fontWeight: FontWeight.medium,
+  },
+  thankYou: {
+    alignItems: 'center',
+    marginTop: Spacing.md,
+    paddingTop: Spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: Colors.border,
+  },
+  thankYouText: {
+    fontSize: FontSize.sm,
+    fontWeight: FontWeight.semibold,
+    color: Colors.primary,
+    marginBottom: 4,
+  },
+  thankYouUrdu: {
+    fontSize: FontSize.xs,
+    color: Colors.textMuted,
+    textAlign: 'center',
+  },
+
+  // Actions
+  actions: {
+    paddingHorizontal: Spacing.md,
+    paddingTop: Spacing.sm,
+  },
+  closeBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: Colors.primary,
+    borderRadius: Radius.md,
+    height: 50,
+  },
+  closeBtnText: {
+    fontSize: FontSize.md,
+    fontWeight: FontWeight.bold,
+    color: '#fff',
   },
 });
