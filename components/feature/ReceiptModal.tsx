@@ -281,7 +281,13 @@ export function ReceiptModal({ visible, receipt, onClose, onUndo, undoAvailable 
 
                 {/* Footer */}
                 <View style={styles.receiptFooter}>
-                  <Text style={styles.thankYou}>Thank you for your payment!</Text>
+                  <Text style={styles.thankYou}>Thank you for your Payment!</Text>
+                  <View style={styles.urduBox}>
+                    <Text style={styles.urduText}>
+                      جب تک آپ کا کریڈٹ لیمٹ 15 ہزار روپے تک ہو گا آپ ہر دن 5 روپے کا سود دے گے{'\n'}
+                      جب آپ کا کریڈٹ لیمٹ 15 ہزار روپے سے زیادہ ہو گا تو
+                    </Text>
+                  </View>
                   <Text style={styles.txnId} numberOfLines={1}>Txn: {activeReceipt.transactionId || 'Pending (offline)'}</Text>
                 </View>
               </View>
@@ -524,6 +530,21 @@ const styles = StyleSheet.create({
   },
   thankYou: {
     fontSize: FontSize.sm, fontWeight: FontWeight.bold, color: Colors.textPrimary,
+  },
+  urduBox: {
+    marginTop: 8,
+    padding: 8,
+    backgroundColor: Colors.surfaceElevated,
+    borderRadius: Radius.sm,
+    borderWidth: 1,
+    borderColor: Colors.borderLight,
+  },
+  urduText: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    textAlign: 'right',
+    writingDirection: 'rtl',
+    lineHeight: 20,
   },
   txnId: {
     fontSize: 10, color: Colors.textMuted, marginTop: 4,

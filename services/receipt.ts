@@ -163,6 +163,18 @@ export function generateReceiptHTML(receipt: ReceiptData): string {
       color: #1a1a2e;
       margin-top: 6px;
     }
+    .urdu-text {
+      font-size: 12px;
+      color: #333;
+      direction: rtl;
+      text-align: right;
+      line-height: 1.8;
+      margin-top: 8px;
+      padding: 8px;
+      background: #f5f5f5;
+      border-radius: 4px;
+      font-family: 'Noto Naskh Arabic', 'Arial', sans-serif;
+    }
   </style>
 </head>
 <body>
@@ -217,7 +229,11 @@ export function generateReceiptHTML(receipt: ReceiptData): string {
 
     <!-- Footer -->
     <div class="footer">
-      <div class="thank-you">Thank you for your payment!</div>
+      <div class="thank-you">Thank you for your Payment!</div>
+      <div class="urdu-text">
+        جب تک آپ کا کریڈٹ لیمٹ 15 ہزار روپے تک ہو گا آپ ہر دن 5 روپے کا سود دے گے<br/>
+        جب آپ کا کریڈٹ لیمٹ 15 ہزار روپے سے زیادہ ہو گا تو
+      </div>
       <div class="txn-id">Txn: ${txnLabel}</div>
       <div class="footer-text">
         This is a system-generated receipt from ${receipt.companyName}.<br/>
