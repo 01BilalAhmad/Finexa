@@ -239,6 +239,14 @@ export async function apiUpdateShopPhone(shopId: string, phone: string) {
   return true;
 }
 
+export async function apiUpdateShopInfo(shopId: string, data: { phone?: string; ownerName?: string }) {
+  await request<any>(`/api/shops/info`, {
+    method: 'PATCH',
+    body: JSON.stringify({ shopId, ...data }),
+  });
+  return true;
+}
+
 // ─── Company ────────────────────────────────────────────────────────────────
 
 export async function apiGetCompanies(userId: string) {
