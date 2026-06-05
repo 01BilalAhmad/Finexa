@@ -120,19 +120,34 @@ export function RouteProvider({ children }: { children: ReactNode }) {
     if (!activeRoute) return null;
     setIsLoading(true);
     try {
-      // Stop GPS tracking first
-      await stopLocationTracking();
+      // Stop GPS tracking first (even if API fails, GPS must stop)
+      try {
+        await stopLocationTracking();
+      } catch (e) {
+        console.warn('[Route] GPS stop failed:', e);
+      }
 
-      // Flush any remaining waypoints
+      // Flush any remaining waypoints (best effort)
       if (!activeRoute.isLocal) {
         try {
           await flushWaypointQueue(activeRoute.id);
-        } catch { /* continue */ }
+        } catch (e) {
+          console.warn('[Route] Flush waypoints failed:', e);
+        }
 
-        // End route on server
-        try {
-          await apiEndRoute(activeRoute.id, { endLat: lat, endLng: lng });
-        } catch { /* continue even if API fails */ }
+        // End route on server — WITH RETRY (up to 3 attempts)
+        const maxRetries = 3;
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+          try {
+            await apiEndRoute(activeRoute.id, { endLat: lat, endLng: lng });
+            break; // Success
+          } catch (err) {
+            console.warn(`[Route] End route attempt ${attempt}/${maxRetries} failed:`, err);
+            if (attempt < maxRetries) {
+              await new Promise(resolve => setTimeout(resolve, 2000 * attempt));
+            }
+          }
+        }
       }
 
       const ended: ActiveRoute = {

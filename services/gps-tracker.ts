@@ -161,37 +161,57 @@ class GPSTrackerService {
     }
   }
 
-  // ─── Stop Tracking ────────────────────────────────────────────────────────
+  // ─── Stop Tracking — ROBUST cleanup ────────────────────────────────────────
   async stopTracking(): Promise<void> {
-    if (!this.isTracking) return;
+    if (!this.isTracking) {
+      console.log('[GPS] Not tracking, skip stop');
+      return;
+    }
 
-    // Stop foreground watch
-    if (this.watchSubscription) {
-      this.watchSubscription.remove();
+    console.log('[GPS] stopTracking called');
+
+    // Stop foreground watch (most critical)
+    try {
+      if (this.watchSubscription) {
+        this.watchSubscription.remove();
+        this.watchSubscription = null;
+      }
+    } catch (err) {
+      console.warn('[GPS] Failed to remove watch subscription:', err);
       this.watchSubscription = null;
     }
 
     // Stop background task
     try {
-      if (await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME)) {
+      const isRunning = await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME).catch(() => false);
+      if (isRunning) {
         await Location.stopLocationUpdatesAsync(LOCATION_TASK_NAME);
+        console.log('[GPS] Background location task stopped');
       }
     } catch (err) {
       console.warn('[GPS] Failed to stop background task:', err);
     }
 
     // Stop batch interval
-    if (this.batchInterval) {
-      clearInterval(this.batchInterval);
-      this.batchInterval = null;
+    try {
+      if (this.batchInterval) {
+        clearInterval(this.batchInterval);
+        this.batchInterval = null;
+      }
+    } catch (err) {
+      console.warn('[GPS] Failed to clear batch interval:', err);
     }
 
-    // Upload any remaining waypoints
-    await this.uploadPendingWaypoints();
+    // Upload any remaining waypoints (best effort)
+    try {
+      await this.uploadPendingWaypoints();
+    } catch (err) {
+      console.warn('[GPS] Failed to upload remaining waypoints:', err);
+    }
 
     this.isTracking = false;
     this.sessionId = null;
-    console.log('[GPS] Tracking stopped');
+    console.log('[GPS] Tracking stopped — all resources cleaned up');
   }
 
   // ─── Upload Pending Waypoints ────────────────────────────────────────────
