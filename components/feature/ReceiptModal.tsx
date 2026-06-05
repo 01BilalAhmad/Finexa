@@ -3,7 +3,7 @@ import {
   View, Text, Pressable, StyleSheet, Modal, ActivityIndicator,
   ScrollView, Alert, Linking,
 } from 'react-native';
-import { MaterialIcons } from '@expo/vector-icons';
+import { MaterialIcons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { captureRef } from 'react-native-view-shot';
 import * as MediaLibrary from 'expo-media-library';
 import * as Print from 'expo-print';
@@ -13,6 +13,18 @@ import { Colors, FontSize, FontWeight, Radius, Spacing } from '@/constants/theme
 import { formatPKRFull, formatDate, formatTime } from '@/utils/format';
 import { ShopInfoPrompt } from '@/components/feature/ShopInfoPrompt';
 import { generateReceiptHTML } from '@/services/receipt';
+
+// ── Reference Receipt Color Palette ──────────────────────────────────────
+const R = {
+  bg: '#3F3D9B',              // Royal blue background
+  bgDark: '#2E2C7A',          // Darker blue for balance box
+  white: '#FFFFFF',
+  teal: '#4ECDC4',            // Light teal for highlights
+  yellow: '#FFD166',          // Yellow for remaining balance
+  gray: '#B8B8D4',            // Muted text on blue
+  divider: 'rgba(255,255,255,0.15)',
+  iconBg: 'rgba(255,255,255,0.12)',
+};
 
 interface ReceiptModalProps {
   visible: boolean;
@@ -49,7 +61,6 @@ export function ReceiptModal({ visible, receipt, onClose, onUndo, undoAvailable 
   // Auto-save to gallery when receipt becomes visible (after info prompt if needed)
   useEffect(() => {
     if (visible && activeReceipt && !showInfoPrompt && !gallerySaved && !savingGallery) {
-      // Small delay to let the view render before capturing
       const timer = setTimeout(() => saveToGallery(), 800);
       return () => clearTimeout(timer);
     }
@@ -65,15 +76,11 @@ export function ReceiptModal({ visible, receipt, onClose, onUndo, undoAvailable 
         setSavingGallery(false);
         return;
       }
-
-      // Capture the receipt view as PNG
       const uri = await captureRef(receiptRef, {
         format: 'png',
         quality: 1,
         result: 'tmpfile',
       });
-
-      // Save to gallery
       await MediaLibrary.createAssetAsync(uri);
       setGallerySaved(true);
     } catch (e: any) {
@@ -89,7 +96,6 @@ export function ReceiptModal({ visible, receipt, onClose, onUndo, undoAvailable 
     try {
       const r = activeReceipt;
       const dateStr = formatDate(r.date);
-      const timeStr = formatTime(r.date);
 
       const text = [
         `*${r.companyName}*`,
@@ -101,23 +107,22 @@ export function ReceiptModal({ visible, receipt, onClose, onUndo, undoAvailable 
         `Owner: ${r.ownerName || 'N/A'}`,
         `Address: ${r.address || 'N/A'}`,
         `Orderbooker: ${r.orderbookerName}`,
-        `Date: ${dateStr} · ${timeStr}`,
+        `Date: ${dateStr}`,
         `━━━━━━━━━━━━━━━━━━`,
-        `Opening Balance: PKR ${r.openingBalance.toLocaleString('en-PK')}`,
-        `Payment: PKR ${r.paymentAmount.toLocaleString('en-PK')}`,
-        `*Remaining: PKR ${r.remainingBalance.toLocaleString('en-PK')}*`,
+        `Opening Balance: Rs. ${r.openingBalance.toLocaleString('en-PK')}`,
+        `Payment Received: Rs. ${r.paymentAmount.toLocaleString('en-PK')}`,
+        `*Remaining Balance: Rs. ${r.remainingBalance.toLocaleString('en-PK')}*`,
         `━━━━━━━━━━━━━━━━━━`,
         `Txn: ${r.transactionId || 'Pending (offline)'}`,
         ``,
+        `Thank you for your Payment!`,
         `Receipt image saved in gallery. Please attach it.`,
-        `Thank you for your payment!`,
       ].join('\n');
 
       const phone = r.shopPhone;
       let whatsappUrl: string;
 
       if (phone) {
-        // Format phone for WhatsApp (remove leading 0, add country code 92)
         const formattedPhone = phone.replace(/^0/, '92').replace(/\s/g, '');
         whatsappUrl = `whatsapp://send?phone=${formattedPhone}&text=${encodeURIComponent(text)}`;
       } else {
@@ -150,8 +155,8 @@ export function ReceiptModal({ visible, receipt, onClose, onUndo, undoAvailable 
       const text = [
         `${r.companyName} - Payment Receipt`,
         `Shop: ${r.shopName}`,
-        `Payment: PKR ${r.paymentAmount.toLocaleString('en-PK')}`,
-        `Remaining: PKR ${r.remainingBalance.toLocaleString('en-PK')}`,
+        `Payment: Rs. ${r.paymentAmount.toLocaleString('en-PK')}`,
+        `Remaining: Rs. ${r.remainingBalance.toLocaleString('en-PK')}`,
         `Date: ${dateStr}`,
         `Txn: ${r.transactionId || 'Pending'}`,
       ].join('\n');
@@ -194,7 +199,6 @@ export function ReceiptModal({ visible, receipt, onClose, onUndo, undoAvailable 
   if (!activeReceipt) return null;
 
   const dateStr = formatDate(activeReceipt.date);
-  const timeStr = formatTime(activeReceipt.date);
 
   return (
     <Modal visible={visible} transparent animationType="slide">
@@ -202,98 +206,134 @@ export function ReceiptModal({ visible, receipt, onClose, onUndo, undoAvailable 
         <View style={styles.container}>
           {/* Close button */}
           <Pressable onPress={onClose} style={styles.closeBtn} hitSlop={8}>
-            <MaterialIcons name="close" size={22} color={Colors.textSecondary} />
+            <MaterialIcons name="close" size={22} color={R.gray} />
           </Pressable>
 
           <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-            {/* Success Icon */}
-            <View style={styles.iconCircle}>
-              <MaterialIcons name="check" size={28} color="#fff" />
-            </View>
-            <Text style={styles.successTitle}>Recovery Submitted!</Text>
-            <Text style={styles.successAmount}>{formatPKRFull(activeReceipt.paymentAmount)}</Text>
 
             {/* Gallery Save Status */}
             <View style={styles.galleryStatus}>
               {savingGallery ? (
-                <><ActivityIndicator size="small" color={Colors.primary} /><Text style={styles.galleryText}>Saving to gallery...</Text></>
+                <><ActivityIndicator size="small" color={R.teal} /><Text style={[styles.galleryText, { color: R.teal }]}>Saving to gallery...</Text></>
               ) : gallerySaved ? (
-                <><MaterialIcons name="check-circle" size={16} color={Colors.success} /><Text style={[styles.galleryText, { color: Colors.success }]}>Receipt saved to gallery</Text></>
+                <><MaterialIcons name="check-circle" size={16} color={R.teal} /><Text style={[styles.galleryText, { color: R.teal }]}>Receipt saved to gallery</Text></>
               ) : (
-                <><MaterialIcons name="photo-library" size={16} color={Colors.textMuted} /><Text style={styles.galleryText}>Saving receipt...</Text></>
+                <><MaterialIcons name="photo-library" size={16} color={R.gray} /><Text style={styles.galleryText}>Saving receipt...</Text></>
               )}
             </View>
 
             {/* ── Receipt Card (captured as image) ────────────────── */}
             <View ref={receiptRef} collapsable={false} style={styles.receiptCaptureArea}>
               <View style={styles.receiptCard}>
-                {/* Header — Company */}
+
+                {/* ── HEADER ── */}
                 <View style={styles.receiptHeader}>
-                  <Text style={styles.companyName}>{activeReceipt.companyName}</Text>
-                  <Text style={styles.distLabel}>Distributor No: <Text style={styles.distPhoneBold}>{activeReceipt.distributorPhone || 'N/A'}</Text></Text>
-                  <View style={styles.receiptBadge}>
-                    <Text style={styles.receiptBadgeText}>PAYMENT RECEIPT</Text>
+                  {/* Company Name with icon */}
+                  <View style={styles.headerRow}>
+                    <MaterialCommunityIcons name="bank" size={22} color={R.white} />
+                    <Text style={styles.companyName}>{activeReceipt.companyName}</Text>
+                  </View>
+
+                  {/* Shop Name (teal) */}
+                  <Text style={styles.shopNameHighlight}>{activeReceipt.shopName}</Text>
+                  <Text style={styles.receiptLabel}>Payment Receipt</Text>
+
+                  {/* Distributor No */}
+                  <View style={styles.distRow}>
+                    <MaterialIcons name="phone" size={16} color={R.teal} />
+                    <Text style={styles.distText}>Distributor No: <Text style={styles.distValue}>{activeReceipt.distributorPhone || 'N/A'}</Text></Text>
                   </View>
                 </View>
 
-                {/* Shop Details */}
-                <View style={styles.receiptBody}>
-                  <Text style={styles.shopNameText}>{activeReceipt.shopName}</Text>
-                  <View style={styles.detailRow}>
-                    <Text style={styles.detailLabel}>Owner</Text>
-                    <Text style={styles.detailValue}>{activeReceipt.ownerName || 'N/A'}</Text>
+                {/* Divider */}
+                <View style={styles.divider} />
+
+                {/* ── SHOP DETAILS ── */}
+                <View style={styles.detailsSection}>
+                  {/* Shop */}
+                  <View style={styles.detailItem}>
+                    <View style={styles.iconCircle}>
+                      <MaterialIcons name="store" size={14} color={R.white} />
+                    </View>
+                    <Text style={styles.detailLabel}>Shop:</Text>
+                    <Text style={styles.detailValue}>{activeReceipt.shopName}</Text>
                   </View>
-                  <View style={styles.detailRow}>
-                    <Text style={styles.detailLabel}>Address</Text>
+
+                  {/* Address */}
+                  <View style={styles.detailItem}>
+                    <View style={styles.iconCircle}>
+                      <MaterialIcons name="location-on" size={14} color={R.white} />
+                    </View>
+                    <Text style={styles.detailLabel}>Address:</Text>
                     <Text style={styles.detailValue}>{activeReceipt.address || 'N/A'}</Text>
                   </View>
-                  {activeReceipt.shopPhone ? (
-                    <View style={styles.detailRow}>
-                      <Text style={styles.detailLabel}>Shop Phone</Text>
-                      <Text style={styles.detailValue}>{activeReceipt.shopPhone}</Text>
+
+                  {/* Owner */}
+                  <View style={styles.detailItem}>
+                    <View style={styles.iconCircle}>
+                      <MaterialIcons name="person" size={14} color={R.white} />
                     </View>
-                  ) : null}
-                  <View style={styles.detailRow}>
-                    <Text style={styles.detailLabel}>Orderbooker</Text>
+                    <Text style={styles.detailLabel}>Owner:</Text>
+                    <Text style={styles.detailValue}>{activeReceipt.ownerName || 'N/A'}</Text>
+                  </View>
+
+                  {/* Date */}
+                  <View style={styles.detailItem}>
+                    <View style={styles.iconCircle}>
+                      <MaterialIcons name="calendar-today" size={14} color={R.white} />
+                    </View>
+                    <Text style={styles.detailLabel}>Date:</Text>
+                    <Text style={styles.detailValue}>{dateStr}</Text>
+                  </View>
+
+                  {/* Orderbooker */}
+                  <View style={styles.detailItem}>
+                    <View style={styles.iconCircle}>
+                      <MaterialIcons name="badge" size={14} color={R.white} />
+                    </View>
+                    <Text style={styles.detailLabel}>Orderbooker:</Text>
                     <Text style={styles.detailValue}>{activeReceipt.orderbookerName}</Text>
                   </View>
-                  <View style={styles.detailRow}>
-                    <Text style={styles.detailLabel}>Date / Time</Text>
-                    <Text style={styles.detailValue}>{dateStr} · {timeStr}</Text>
-                  </View>
                 </View>
 
-                {/* Balance Section */}
-                <View style={styles.balanceSection}>
+                {/* ── BALANCE BOX ── */}
+                <View style={styles.balanceBox}>
                   <View style={styles.balRow}>
                     <Text style={styles.balLabel}>Opening Balance</Text>
-                    <Text style={styles.balValue}>{formatPKRFull(activeReceipt.openingBalance)}</Text>
+                    <Text style={styles.balValue}>Rs. {activeReceipt.openingBalance.toLocaleString('en-PK')}</Text>
                   </View>
                   <View style={styles.balRow}>
-                    <Text style={[styles.balLabel, { color: Colors.danger }]}>Payment Received</Text>
-                    <Text style={[styles.balValue, { color: Colors.danger }]}>- {formatPKRFull(activeReceipt.paymentAmount)}</Text>
+                    <Text style={styles.balLabel}>Payment Received</Text>
+                    <Text style={[styles.balValue, { color: R.teal, fontWeight: '700' }]}>Rs. {activeReceipt.paymentAmount.toLocaleString('en-PK')}</Text>
                   </View>
                   <View style={[styles.balRow, styles.balRowTotal]}>
-                    <Text style={styles.balLabelTotal}>Remaining Balance</Text>
-                    <Text style={styles.balValueTotal}>{formatPKRFull(activeReceipt.remainingBalance)}</Text>
+                    <Text style={[styles.balLabel, { fontWeight: '700' }]}>Remaining Balance</Text>
+                    <Text style={styles.balValueTotal}>Rs. {activeReceipt.remainingBalance.toLocaleString('en-PK')}</Text>
                   </View>
                 </View>
 
-                {/* Footer */}
-                <View style={styles.receiptFooter}>
-                  <View style={styles.urduBox}>
-                    <Text style={styles.urduText}>
-                      جب تک آپ کا کریڈٹ لیمٹ 15 ہزار روپے تک ہو گا آپ ہر دن 5 روپے کا سود دے گے{'\n'}
-                      جب آپ کا کریڈٹ لیمٹ 15 ہزار روپے سے زیادہ ہو گا تو
-                    </Text>
-                  </View>
-                  <View style={styles.urduBox}>
-                    <Text style={styles.urduText2}>
-                      اگر آپ کو بلنس میں کسی قسم کا کوئی فرق محسوس ہوتا ہے تو اوپر دیے گئے نمبر پر لازمی رابطہ کریں شکریہ
-                    </Text>
-                  </View>
-                  <Text style={styles.txnId} numberOfLines={1}>Txn: {activeReceipt.transactionId || 'Pending (offline)'}</Text>
+                {/* ── THANK YOU ── */}
+                <View style={styles.thankSection}>
+                  <MaterialIcons name="check-circle" size={18} color={R.teal} />
+                  <Text style={styles.thankText}>Thank you for your Payment!</Text>
                 </View>
+
+                {/* Divider */}
+                <View style={styles.divider} />
+
+                {/* ── URDU FOOTER ── */}
+                <View style={styles.urduSection}>
+                  <Text style={styles.urduText1}>
+                    جب تک آپ کا کریڈٹ لیمٹ 15 ہزار روپے تک ہو گا آپ ہر دن 5 روپے کا سود دے گے{'\n'}
+                    جب آپ کا کریڈٹ لیمٹ 15 ہزار روپے سے زیادہ ہو گا تو
+                  </Text>
+                  <Text style={styles.urduText2}>
+                    اگر آپ کو بلنس میں کسی قسم کا کوئی فرق محسوس ہوتا ہے تو اوپر دیے گئے نمبر پر لازمی رابطہ کریں شکریہ
+                  </Text>
+                </View>
+
+                {/* Txn ID */}
+                <Text style={styles.txnId} numberOfLines={1}>Txn: {activeReceipt.transactionId || 'Pending (offline)'}</Text>
               </View>
             </View>
 
@@ -301,12 +341,7 @@ export function ReceiptModal({ visible, receipt, onClose, onUndo, undoAvailable 
             <View style={styles.shareSection}>
               <Text style={styles.shareTitle}>Send Receipt</Text>
               <View style={styles.actions}>
-                {/* WhatsApp */}
-                <Pressable
-                  style={[styles.actionBtn, styles.whatsappBtn]}
-                  onPress={handleWhatsApp}
-                  disabled={whatsApping}
-                >
+                <Pressable style={[styles.actionBtn, styles.whatsappBtn]} onPress={handleWhatsApp} disabled={whatsApping}>
                   {whatsApping ? (
                     <ActivityIndicator size="small" color="#25D366" />
                   ) : (
@@ -315,27 +350,18 @@ export function ReceiptModal({ visible, receipt, onClose, onUndo, undoAvailable 
                   <Text style={[styles.actionBtnText, { color: '#25D366' }]}>WhatsApp</Text>
                 </Pressable>
 
-                {/* SMS */}
-                <Pressable
-                  style={[styles.actionBtn, styles.smsBtn]}
-                  onPress={handleSMS}
-                >
-                  <MaterialIcons name="sms" size={22} color={Colors.primary} />
-                  <Text style={[styles.actionBtnText, { color: Colors.primary }]}>SMS</Text>
+                <Pressable style={[styles.actionBtn, styles.smsBtn]} onPress={handleSMS}>
+                  <MaterialIcons name="sms" size={22} color={R.bg} />
+                  <Text style={[styles.actionBtnText, { color: R.bg }]}>SMS</Text>
                 </Pressable>
 
-                {/* Print */}
-                <Pressable
-                  style={[styles.actionBtn, styles.printBtn]}
-                  onPress={handlePrint}
-                  disabled={printing}
-                >
+                <Pressable style={[styles.actionBtn, styles.printBtn]} onPress={handlePrint} disabled={printing}>
                   {printing ? (
-                    <ActivityIndicator size="small" color={Colors.textSecondary} />
+                    <ActivityIndicator size="small" color={R.gray} />
                   ) : (
-                    <MaterialIcons name="print" size={22} color={Colors.textSecondary} />
+                    <MaterialIcons name="print" size={22} color={R.gray} />
                   )}
-                  <Text style={[styles.actionBtnText, { color: Colors.textSecondary }]}>Print</Text>
+                  <Text style={[styles.actionBtnText, { color: '#555' }]}>Print</Text>
                 </Pressable>
               </View>
               <Text style={styles.shareHint}>
@@ -346,7 +372,7 @@ export function ReceiptModal({ visible, receipt, onClose, onUndo, undoAvailable 
             {/* Undo */}
             {undoAvailable && onUndo && (
               <Pressable onPress={onUndo} style={styles.undoRow}>
-                <MaterialIcons name="undo" size={16} color={Colors.textSecondary} />
+                <MaterialIcons name="undo" size={16} color={R.gray} />
                 <Text style={styles.undoText}>Undo this recovery</Text>
               </Pressable>
             )}
@@ -384,192 +410,237 @@ export function ReceiptModal({ visible, receipt, onClose, onUndo, undoAvailable 
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: Colors.overlay,
+    backgroundColor: 'rgba(0,0,0,0.6)',
     justifyContent: 'flex-end',
   },
   container: {
-    backgroundColor: Colors.bg,
-    borderTopLeftRadius: Radius.xl,
-    borderTopRightRadius: Radius.xl,
+    backgroundColor: '#1A1A3E',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
     maxHeight: '92%',
-    paddingTop: Spacing.sm,
+    paddingTop: 8,
   },
   closeBtn: {
     alignSelf: 'flex-end',
-    marginRight: Spacing.md,
-    marginTop: Spacing.xs,
-    padding: Spacing.xs,
+    marginRight: 16,
+    marginTop: 4,
+    padding: 8,
   },
   scrollContent: {
-    paddingHorizontal: Spacing.md,
-    paddingBottom: Spacing.md,
+    paddingHorizontal: 16,
+    paddingBottom: 16,
     alignItems: 'center',
-  },
-
-  // Success header
-  iconCircle: {
-    width: 52, height: 52, borderRadius: 26,
-    backgroundColor: Colors.success, alignItems: 'center', justifyContent: 'center',
-    marginBottom: Spacing.sm,
-  },
-  successTitle: {
-    fontSize: FontSize.lg, fontWeight: FontWeight.bold, color: Colors.textPrimary,
-    marginBottom: 2,
-  },
-  successAmount: {
-    fontSize: FontSize.xxl, fontWeight: FontWeight.extrabold, color: Colors.success,
-    marginBottom: Spacing.sm,
   },
 
   // Gallery status
   galleryStatus: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
-    marginBottom: Spacing.md,
+    marginBottom: 12,
   },
   galleryText: {
-    fontSize: FontSize.xs, color: Colors.textMuted, fontWeight: FontWeight.medium,
+    fontSize: 12, color: R.gray, fontWeight: '500',
   },
 
-  // Receipt capture area (this gets captured as image)
+  // Receipt capture area
   receiptCaptureArea: {
     width: '100%',
-    backgroundColor: Colors.bg,
   },
 
-  // Receipt Card
+  // Receipt Card — BLUE background matching reference
   receiptCard: {
     width: '100%',
-    backgroundColor: Colors.surface,
-    borderRadius: Radius.lg,
-    borderWidth: 1,
-    borderColor: Colors.border,
+    backgroundColor: R.bg,
+    borderRadius: 16,
     overflow: 'hidden',
+    paddingBottom: 16,
   },
+
+  // ── HEADER ──
   receiptHeader: {
     alignItems: 'center',
-    paddingVertical: Spacing.md,
-    paddingHorizontal: Spacing.md,
-    borderBottomWidth: 2,
-    borderBottomColor: Colors.textPrimary,
+    paddingTop: 20,
+    paddingHorizontal: 20,
+    paddingBottom: 16,
+  },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 8,
   },
   companyName: {
-    fontSize: FontSize.lg, fontWeight: FontWeight.extrabold, color: Colors.textPrimary,
-    textTransform: 'uppercase', letterSpacing: 0.5,
+    fontSize: 18,
+    fontWeight: '800',
+    color: R.white,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
-  distLabel: {
-    fontSize: FontSize.xs, color: Colors.textSecondary, marginTop: 2,
+  shopNameHighlight: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: R.teal,
+    marginBottom: 2,
   },
-  distPhoneBold: {
-    fontWeight: FontWeight.bold, color: Colors.textPrimary,
+  receiptLabel: {
+    fontSize: 13,
+    color: R.white,
+    fontWeight: '500',
+    marginBottom: 12,
   },
-  receiptBadge: {
-    marginTop: Spacing.sm,
-    backgroundColor: Colors.textPrimary,
-    paddingHorizontal: 12,
-    paddingVertical: 2,
-    borderRadius: 3,
+  distRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: R.iconBg,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 20,
   },
-  receiptBadgeText: {
-    fontSize: 10, fontWeight: FontWeight.bold, color: Colors.bg,
-    letterSpacing: 1.5,
+  distText: {
+    fontSize: 13,
+    color: R.gray,
+  },
+  distValue: {
+    fontWeight: '700',
+    color: R.white,
+    fontSize: 15,
   },
 
-  // Shop details
-  receiptBody: {
-    padding: Spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.borderLight,
-    borderStyle: 'dashed',
+  // Divider
+  divider: {
+    height: 1,
+    backgroundColor: R.divider,
+    marginHorizontal: 20,
   },
-  shopNameText: {
-    fontSize: FontSize.md, fontWeight: FontWeight.bold, color: Colors.textPrimary,
-    marginBottom: Spacing.sm,
+
+  // ── SHOP DETAILS ──
+  detailsSection: {
+    paddingHorizontal: 20,
+    paddingTop: 14,
+    paddingBottom: 10,
   },
-  detailRow: {
-    flexDirection: 'row', justifyContent: 'space-between',
-    paddingVertical: 2,
+  detailItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 5,
+  },
+  iconCircle: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: R.iconBg,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   detailLabel: {
-    fontSize: FontSize.xs, color: Colors.textMuted, fontWeight: FontWeight.medium,
-    minWidth: 100,
+    fontSize: 13,
+    color: R.gray,
+    fontWeight: '500',
+    minWidth: 90,
   },
   detailValue: {
-    fontSize: FontSize.xs, fontWeight: FontWeight.bold, color: Colors.textPrimary,
-    flex: 1, textAlign: 'right',
+    fontSize: 13,
+    fontWeight: '700',
+    color: R.white,
+    flex: 1,
+    textAlign: 'right',
   },
 
-  // Balance section
-  balanceSection: {
-    padding: Spacing.md,
+  // ── BALANCE BOX ──
+  balanceBox: {
+    marginHorizontal: 16,
+    marginVertical: 10,
+    backgroundColor: R.bgDark,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+    padding: 16,
   },
   balRow: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     paddingVertical: 6,
   },
   balLabel: {
-    fontSize: FontSize.sm, color: Colors.textSecondary, fontWeight: FontWeight.medium,
+    fontSize: 14,
+    color: R.gray,
+    fontWeight: '500',
   },
   balValue: {
-    fontSize: FontSize.sm, fontWeight: FontWeight.bold, color: Colors.textPrimary,
+    fontSize: 14,
+    fontWeight: '700',
+    color: R.white,
   },
   balRowTotal: {
-    borderTopWidth: 2, borderTopColor: Colors.textPrimary,
-    marginTop: 4, paddingTop: 10,
-  },
-  balLabelTotal: {
-    fontSize: FontSize.sm, fontWeight: FontWeight.bold, color: Colors.textPrimary,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.2)',
+    marginTop: 4,
+    paddingTop: 10,
   },
   balValueTotal: {
-    fontSize: FontSize.xl, fontWeight: FontWeight.extrabold, color: Colors.success,
+    fontSize: 22,
+    fontWeight: '800',
+    color: R.yellow,
   },
 
-  // Receipt footer
-  receiptFooter: {
-    paddingVertical: Spacing.md,
-    paddingHorizontal: Spacing.md,
-    borderTopWidth: 1,
-    borderTopColor: Colors.borderLight,
-    borderStyle: 'dashed',
+  // ── THANK YOU ──
+  thankSection: {
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
   },
-  thankYou: {
-    fontSize: FontSize.sm, fontWeight: FontWeight.bold, color: Colors.textPrimary,
+  thankText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: R.teal,
   },
-  urduBox: {
-    marginTop: 8,
-    padding: 8,
-    backgroundColor: Colors.surfaceElevated,
-    borderRadius: Radius.sm,
-    borderWidth: 1,
-    borderColor: Colors.borderLight,
+
+  // ── URDU SECTION ──
+  urduSection: {
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    paddingBottom: 4,
   },
-  urduText: {
+  urduText1: {
     fontSize: 12,
-    color: Colors.textSecondary,
+    color: R.white,
     textAlign: 'right',
     writingDirection: 'rtl',
     lineHeight: 20,
+    marginBottom: 4,
   },
   urduText2: {
     fontSize: 12,
-    color: Colors.textPrimary,
-    fontWeight: FontWeight.bold,
+    color: R.white,
+    fontWeight: '700',
     textAlign: 'right',
     writingDirection: 'rtl',
     lineHeight: 20,
   },
+
+  // Txn ID
   txnId: {
-    fontSize: 10, color: Colors.textMuted, marginTop: 4,
+    fontSize: 10,
+    color: R.gray,
+    textAlign: 'center',
+    marginTop: 6,
   },
 
-  // Share section
+  // ── SHARE SECTION ──
   shareSection: {
     width: '100%',
-    marginTop: Spacing.lg,
+    marginTop: 16,
   },
   shareTitle: {
-    fontSize: FontSize.sm, fontWeight: FontWeight.semibold, color: Colors.textPrimary,
-    marginBottom: Spacing.sm, textAlign: 'center',
+    fontSize: 14,
+    fontWeight: '600',
+    color: R.gray,
+    marginBottom: 10,
+    textAlign: 'center',
   },
   actions: {
     flexDirection: 'row',
@@ -583,50 +654,48 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 4,
     paddingVertical: 14,
-    borderRadius: Radius.md,
+    borderRadius: 12,
     borderWidth: 1.5,
   },
   whatsappBtn: {
-    backgroundColor: 'rgba(37,211,102,0.12)',
+    backgroundColor: 'rgba(37,211,102,0.15)',
     borderColor: '#25D366',
   },
   smsBtn: {
-    backgroundColor: Colors.primaryMuted,
-    borderColor: Colors.primary,
+    backgroundColor: 'rgba(78,205,196,0.15)',
+    borderColor: R.teal,
   },
   printBtn: {
-    backgroundColor: Colors.surfaceElevated,
-    borderColor: Colors.border,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderColor: 'rgba(255,255,255,0.2)',
   },
   actionBtnText: {
-    fontSize: FontSize.xs, fontWeight: FontWeight.bold,
+    fontSize: 12, fontWeight: '700',
   },
   shareHint: {
-    fontSize: 10, color: Colors.textMuted, textAlign: 'center',
-    marginTop: Spacing.sm, lineHeight: 14,
+    fontSize: 10, color: R.gray, textAlign: 'center',
+    marginTop: 10, lineHeight: 14,
   },
 
   // Undo
   undoRow: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
-    marginTop: Spacing.md, paddingVertical: Spacing.xs,
+    marginTop: 12, paddingVertical: 4,
   },
   undoText: {
-    fontSize: FontSize.xs, color: Colors.textSecondary, fontWeight: FontWeight.medium,
+    fontSize: 12, color: R.gray, fontWeight: '500',
   },
 
   // Done
   doneBtn: {
-    marginHorizontal: Spacing.md,
-    marginBottom: Spacing.lg,
+    marginHorizontal: 16,
+    marginBottom: 20,
     paddingVertical: 14,
-    backgroundColor: Colors.surfaceElevated,
-    borderRadius: Radius.md,
+    backgroundColor: R.teal,
+    borderRadius: 12,
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: Colors.border,
   },
   doneBtnText: {
-    fontSize: FontSize.md, fontWeight: FontWeight.bold, color: Colors.textPrimary,
+    fontSize: 16, fontWeight: '700', color: '#1A1A3E',
   },
 });
