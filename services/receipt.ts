@@ -186,14 +186,6 @@ export function generateReceiptHTML(receipt: ReceiptData): string {
     .urdu-section {
       padding: 8px 0 4px;
     }
-    .urdu-1 {
-      font-size: 12px;
-      color: #fff;
-      direction: rtl;
-      text-align: right;
-      line-height: 1.8;
-      margin-bottom: 4px;
-    }
     .urdu-2 {
       font-size: 12px;
       color: #fff;
@@ -287,10 +279,6 @@ export function generateReceiptHTML(receipt: ReceiptData): string {
 
     <!-- Urdu Footer -->
     <div class="urdu-section">
-      <div class="urdu-1">
-        جب تک آپ کا کریڈٹ لیمٹ 15 ہزار روپے تک ہو گا آپ ہر دن 5 روپے کا سود دے گے<br/>
-        جب آپ کا کریڈٹ لیمٹ 15 ہزار روپے سے زیادہ ہو گا تو
-      </div>
       <div class="urdu-2">
         اگر آپ کو بلنس میں کسی قسم کا کوئی فرق محسوس ہوتا ہے تو اوپر دیے گئے نمبر پر لازمی رابطہ کریں شکریہ
       </div>

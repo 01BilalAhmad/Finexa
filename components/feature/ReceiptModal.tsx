@@ -323,10 +323,6 @@ export function ReceiptModal({ visible, receipt, onClose, onUndo, undoAvailable 
 
                 {/* ── URDU FOOTER ── */}
                 <View style={styles.urduSection}>
-                  <Text style={styles.urduText1}>
-                    جب تک آپ کا کریڈٹ لیمٹ 15 ہزار روپے تک ہو گا آپ ہر دن 5 روپے کا سود دے گے{'\n'}
-                    جب آپ کا کریڈٹ لیمٹ 15 ہزار روپے سے زیادہ ہو گا تو
-                  </Text>
                   <Text style={styles.urduText2}>
                     اگر آپ کو بلنس میں کسی قسم کا کوئی فرق محسوس ہوتا ہے تو اوپر دیے گئے نمبر پر لازمی رابطہ کریں شکریہ
                   </Text>
@@ -601,14 +597,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 8,
     paddingBottom: 4,
-  },
-  urduText1: {
-    fontSize: 12,
-    color: R.white,
-    textAlign: 'right',
-    writingDirection: 'rtl',
-    lineHeight: 20,
-    marginBottom: 4,
   },
   urduText2: {
     fontSize: 12,
