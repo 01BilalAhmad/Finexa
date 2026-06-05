@@ -13,7 +13,6 @@ import { Colors, FontSize, FontWeight, Radius, Spacing } from '@/constants/theme
 import { getDayName, formatPKRFull } from '@/utils/format';
 import { ShopCard } from '@/components/feature/ShopCard';
 import { RecoverySheet } from '@/components/feature/RecoverySheet';
-import { SuccessOverlay } from '@/components/feature/SuccessOverlay';
 import { ReceiptModal } from '@/components/feature/ReceiptModal';
 import { ShopDetailModal } from '@/components/feature/ShopDetailModal';
 import { RouteStartCard } from '@/components/feature/RouteStartCard';

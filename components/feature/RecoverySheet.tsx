@@ -12,7 +12,6 @@ import { useShops } from '@/hooks/useShops';
 import { useRoute } from '@/hooks/useRoute';
 import { useOffline } from '@/hooks/useOffline';
 import { apiSubmitRecovery, apiRecordVisit } from '@/services/api';
-import { ShopInfoPrompt } from '@/components/feature/ShopInfoPrompt';
 import { StorageService } from '@/services/storage';
 import { Colors, FontSize, FontWeight, Radius, Spacing } from '@/constants/theme';
 import { formatPKRFull, formatPKR, generateLocalId } from '@/utils/format';
@@ -38,30 +37,17 @@ export function RecoverySheet({ visible, shop, onClose, onSuccess }: RecoveryShe
   const [loading, setLoading] = useState(false);
   const [gpsCapturing, setGpsCapturing] = useState(false);
   const [capturedGps, setCapturedGps] = useState<{ lat: number; lng: number } | null>(null);
-  const [showInfoPrompt, setShowInfoPrompt] = useState(false);
-  const [currentShop, setCurrentShop] = useState<Shop | null>(null);
 
   const parsedAmount = parseFloat(amount.replace(/,/g, '')) || 0;
   const remaining = shop ? Math.max(0, shop.balance - parsedAmount) : 0;
   const isValidAmount = parsedAmount >= MIN_RECOVERY && parsedAmount <= MAX_RECOVERY && (shop ? parsedAmount <= shop.balance : true);
 
   useEffect(() => {
-    if (visible && shop) {
-      // Check if shop is missing owner name or phone
-      const missingOwner = !shop.ownerName || shop.ownerName.trim() === '';
-      const missingPhone = !shop.phone || shop.phone.trim() === '';
-      if (missingOwner || missingPhone) {
-        setCurrentShop(shop);
-        setShowInfoPrompt(true);
-      } else if (gpsEnabled) {
-        captureGps();
-      }
-    }
+    if (visible && gpsEnabled) captureGps();
     if (!visible) {
       setAmount('');
       setNote('');
       setCapturedGps(null);
-      setShowInfoPrompt(false);
     }
   }, [visible]);
 
@@ -181,29 +167,8 @@ export function RecoverySheet({ visible, shop, onClose, onSuccess }: RecoveryShe
   if (!shop) return null;
   const usagePct = shop.creditLimit > 0 ? Math.min((shop.balance / shop.creditLimit) * 100, 100) : 0;
 
-  function handleInfoDone(updatedShop: Shop) {
-    setShowInfoPrompt(false);
-    // Update the shop object used in this sheet
-    Object.assign(shop, updatedShop);
-    if (gpsEnabled) captureGps();
-  }
-
-  function handleInfoSkip() {
-    setShowInfoPrompt(false);
-    if (gpsEnabled) captureGps();
-  }
-
   return (
-    <>
-      {/* Shop Info Prompt — shown before recovery sheet if phone/owner missing */}
-      <ShopInfoPrompt
-        visible={showInfoPrompt}
-        shop={currentShop}
-        onDone={handleInfoDone}
-        onSkip={handleInfoSkip}
-      />
-
-      <BottomSheet visible={visible && !showInfoPrompt} onClose={onClose}>
+    <BottomSheet visible={visible} onClose={onClose}>
       {/* Header */}
       <View style={styles.header}>
         <View>
@@ -323,7 +288,6 @@ export function RecoverySheet({ visible, shop, onClose, onSuccess }: RecoveryShe
         style={{ marginTop: Spacing.md }}
       />
     </BottomSheet>
-    </>
   );
 }
 

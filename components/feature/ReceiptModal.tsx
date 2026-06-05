@@ -1,13 +1,18 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   View, Text, Pressable, StyleSheet, Modal, ActivityIndicator,
-  ScrollView, Alert,
+  ScrollView, Alert, Linking,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
+import { captureRef } from 'react-native-view-shot';
+import * as MediaLibrary from 'expo-media-library';
+import * as Print from 'expo-print';
+import * as Sharing from 'expo-sharing';
 import { ReceiptData } from '@/types';
 import { Colors, FontSize, FontWeight, Radius, Spacing } from '@/constants/theme';
 import { formatPKRFull, formatDate, formatTime } from '@/utils/format';
-import { printReceipt, shareReceipt, shareReceiptWhatsApp } from '@/services/receipt';
+import { ShopInfoPrompt } from '@/components/feature/ShopInfoPrompt';
+import { generateReceiptHTML } from '@/services/receipt';
 
 interface ReceiptModalProps {
   visible: boolean;
@@ -18,16 +23,152 @@ interface ReceiptModalProps {
 }
 
 export function ReceiptModal({ visible, receipt, onClose, onUndo, undoAvailable }: ReceiptModalProps) {
-  const [printing, setPrinting] = useState(false);
-  const [sharing, setSharing] = useState(false);
+  const receiptRef = useRef<View>(null);
+  const [gallerySaved, setGallerySaved] = useState(false);
+  const [savingGallery, setSavingGallery] = useState(false);
   const [whatsApping, setWhatsApping] = useState(false);
+  const [printing, setPrinting] = useState(false);
+  const [showInfoPrompt, setShowInfoPrompt] = useState(false);
+  const [updatedReceipt, setUpdatedReceipt] = useState<ReceiptData | null>(null);
 
-  if (!receipt) return null;
+  const activeReceipt = updatedReceipt || receipt;
+
+  // Check if shop info is missing when modal opens
+  useEffect(() => {
+    if (visible && receipt) {
+      setUpdatedReceipt(null);
+      setGallerySaved(false);
+      const missingOwner = !receipt.ownerName || receipt.ownerName.trim() === '';
+      const missingPhone = !receipt.shopPhone || receipt.shopPhone.trim() === '';
+      if (missingOwner || missingPhone) {
+        setShowInfoPrompt(true);
+      }
+    }
+  }, [visible, receipt?.transactionId]);
+
+  // Auto-save to gallery when receipt becomes visible (after info prompt if needed)
+  useEffect(() => {
+    if (visible && activeReceipt && !showInfoPrompt && !gallerySaved && !savingGallery) {
+      // Small delay to let the view render before capturing
+      const timer = setTimeout(() => saveToGallery(), 800);
+      return () => clearTimeout(timer);
+    }
+  }, [visible, activeReceipt, showInfoPrompt]);
+
+  async function saveToGallery() {
+    if (!receiptRef.current || gallerySaved) return;
+    setSavingGallery(true);
+    try {
+      const { status } = await MediaLibrary.requestPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission Needed', 'Please allow photo library access to save receipt.');
+        setSavingGallery(false);
+        return;
+      }
+
+      // Capture the receipt view as PNG
+      const uri = await captureRef(receiptRef, {
+        format: 'png',
+        quality: 1,
+        result: 'tmpfile',
+      });
+
+      // Save to gallery
+      await MediaLibrary.createAssetAsync(uri);
+      setGallerySaved(true);
+    } catch (e: any) {
+      console.error('Gallery save error:', e);
+    } finally {
+      setSavingGallery(false);
+    }
+  }
+
+  async function handleWhatsApp() {
+    if (!activeReceipt) return;
+    setWhatsApping(true);
+    try {
+      const r = activeReceipt;
+      const dateStr = formatDate(r.date);
+      const timeStr = formatTime(r.date);
+
+      const text = [
+        `*${r.companyName}*`,
+        `Distributor: ${r.distributorPhone || 'N/A'}`,
+        `━━━━━━━━━━━━━━━━━━`,
+        `*Payment Receipt*`,
+        ``,
+        `Shop: ${r.shopName}`,
+        `Owner: ${r.ownerName || 'N/A'}`,
+        `Address: ${r.address || 'N/A'}`,
+        `Orderbooker: ${r.orderbookerName}`,
+        `Date: ${dateStr} · ${timeStr}`,
+        `━━━━━━━━━━━━━━━━━━`,
+        `Opening Balance: PKR ${r.openingBalance.toLocaleString('en-PK')}`,
+        `Payment: PKR ${r.paymentAmount.toLocaleString('en-PK')}`,
+        `*Remaining: PKR ${r.remainingBalance.toLocaleString('en-PK')}*`,
+        `━━━━━━━━━━━━━━━━━━`,
+        `Txn: ${r.transactionId || 'Pending (offline)'}`,
+        ``,
+        `Receipt image saved in gallery. Please attach it.`,
+        `Thank you for your payment!`,
+      ].join('\n');
+
+      const phone = r.shopPhone;
+      let whatsappUrl: string;
+
+      if (phone) {
+        // Format phone for WhatsApp (remove leading 0, add country code 92)
+        const formattedPhone = phone.replace(/^0/, '92').replace(/\s/g, '');
+        whatsappUrl = `whatsapp://send?phone=${formattedPhone}&text=${encodeURIComponent(text)}`;
+      } else {
+        whatsappUrl = `whatsapp://send?text=${encodeURIComponent(text)}`;
+      }
+
+      const supported = await Linking.canOpenURL(whatsappUrl);
+      if (supported) {
+        await Linking.openURL(whatsappUrl);
+      } else {
+        Alert.alert('WhatsApp Not Installed', 'Please install WhatsApp to share receipt.');
+      }
+    } catch (e: any) {
+      Alert.alert('Error', e?.message || 'Could not share via WhatsApp');
+    } finally {
+      setWhatsApping(false);
+    }
+  }
+
+  async function handleSMS() {
+    if (!activeReceipt) return;
+    try {
+      const r = activeReceipt;
+      const phone = r.shopPhone;
+      if (!phone) {
+        Alert.alert('No Phone', 'Shop phone number is not available.');
+        return;
+      }
+      const dateStr = formatDate(r.date);
+      const text = [
+        `${r.companyName} - Payment Receipt`,
+        `Shop: ${r.shopName}`,
+        `Payment: PKR ${r.paymentAmount.toLocaleString('en-PK')}`,
+        `Remaining: PKR ${r.remainingBalance.toLocaleString('en-PK')}`,
+        `Date: ${dateStr}`,
+        `Txn: ${r.transactionId || 'Pending'}`,
+      ].join('\n');
+
+      const smsUrl = `sms:${phone}?body=${encodeURIComponent(text)}`;
+      await Linking.openURL(smsUrl);
+    } catch (e: any) {
+      Alert.alert('Error', 'Could not open SMS app');
+    }
+  }
 
   async function handlePrint() {
+    if (!activeReceipt) return;
     setPrinting(true);
     try {
-      await printReceipt(receipt);
+      const html = generateReceiptHTML(activeReceipt);
+      await Print.printAsync({ html });
     } catch (e: any) {
       Alert.alert('Print Error', e?.message || 'Could not print receipt');
     } finally {
@@ -35,30 +176,25 @@ export function ReceiptModal({ visible, receipt, onClose, onUndo, undoAvailable 
     }
   }
 
-  async function handleShare() {
-    setSharing(true);
-    try {
-      await shareReceipt(receipt);
-    } catch (e: any) {
-      Alert.alert('Share Error', e?.message || 'Could not share receipt');
-    } finally {
-      setSharing(false);
+  function handleInfoDone(updatedInfo: { ownerName?: string; phone?: string }) {
+    setShowInfoPrompt(false);
+    if (activeReceipt) {
+      setUpdatedReceipt({
+        ...activeReceipt,
+        ownerName: updatedInfo.ownerName || activeReceipt.ownerName,
+        shopPhone: updatedInfo.phone || activeReceipt.shopPhone,
+      });
     }
   }
 
-  async function handleWhatsApp() {
-    setWhatsApping(true);
-    try {
-      await shareReceiptWhatsApp(receipt);
-    } catch (e: any) {
-      Alert.alert('Share Error', e?.message || 'Could not share via WhatsApp');
-    } finally {
-      setWhatsApping(false);
-    }
+  function handleInfoSkip() {
+    setShowInfoPrompt(false);
   }
 
-  const dateStr = formatDate(receipt.date);
-  const timeStr = formatTime(receipt.date);
+  if (!activeReceipt) return null;
+
+  const dateStr = formatDate(activeReceipt.date);
+  const timeStr = formatTime(activeReceipt.date);
 
   return (
     <Modal visible={visible} transparent animationType="slide">
@@ -75,113 +211,129 @@ export function ReceiptModal({ visible, receipt, onClose, onUndo, undoAvailable 
               <MaterialIcons name="check" size={28} color="#fff" />
             </View>
             <Text style={styles.successTitle}>Recovery Submitted!</Text>
-            <Text style={styles.successAmount}>{formatPKRFull(receipt.paymentAmount)}</Text>
+            <Text style={styles.successAmount}>{formatPKRFull(activeReceipt.paymentAmount)}</Text>
 
-            {/* ── Receipt Card ───────────────────────────── */}
-            <View style={styles.receiptCard}>
-              {/* Header — Company */}
-              <View style={styles.receiptHeader}>
-                <Text style={styles.companyName}>{receipt.companyName}</Text>
-                <Text style={styles.distPhone}>Distributor: <Text style={styles.distPhoneBold}>{receipt.distributorPhone || 'N/A'}</Text></Text>
-                <View style={styles.receiptBadge}>
-                  <Text style={styles.receiptBadgeText}>PAYMENT RECEIPT</Text>
-                </View>
-              </View>
+            {/* Gallery Save Status */}
+            <View style={styles.galleryStatus}>
+              {savingGallery ? (
+                <><ActivityIndicator size="small" color={Colors.primary} /><Text style={styles.galleryText}>Saving to gallery...</Text></>
+              ) : gallerySaved ? (
+                <><MaterialIcons name="check-circle" size={16} color={Colors.success} /><Text style={[styles.galleryText, { color: Colors.success }]}>Receipt saved to gallery</Text></>
+              ) : (
+                <><MaterialIcons name="photo-library" size={16} color={Colors.textMuted} /><Text style={styles.galleryText}>Saving receipt...</Text></>
+              )}
+            </View>
 
-              {/* Shop Details */}
-              <View style={styles.receiptBody}>
-                <Text style={styles.shopNameText}>{receipt.shopName}</Text>
-
-                <View style={styles.detailRow}>
-                  <Text style={styles.detailLabel}>Owner</Text>
-                  <Text style={styles.detailValue}>{receipt.ownerName || 'N/A'}</Text>
-                </View>
-                <View style={styles.detailRow}>
-                  <Text style={styles.detailLabel}>Address</Text>
-                  <Text style={styles.detailValue}>{receipt.address || 'N/A'}</Text>
-                </View>
-                {receipt.shopPhone ? (
-                  <View style={styles.detailRow}>
-                    <Text style={styles.detailLabel}>Shop Phone</Text>
-                    <Text style={styles.detailValue}>{receipt.shopPhone}</Text>
+            {/* ── Receipt Card (captured as image) ────────────────── */}
+            <View ref={receiptRef} collapsable={false} style={styles.receiptCaptureArea}>
+              <View style={styles.receiptCard}>
+                {/* Header — Company */}
+                <View style={styles.receiptHeader}>
+                  <Text style={styles.companyName}>{activeReceipt.companyName}</Text>
+                  <Text style={styles.distPhone}>Distributor: <Text style={styles.distPhoneBold}>{activeReceipt.distributorPhone || 'N/A'}</Text></Text>
+                  <View style={styles.receiptBadge}>
+                    <Text style={styles.receiptBadgeText}>PAYMENT RECEIPT</Text>
                   </View>
-                ) : null}
-                <View style={styles.detailRow}>
-                  <Text style={styles.detailLabel}>Orderbooker</Text>
-                  <Text style={styles.detailValue}>{receipt.orderbookerName}</Text>
                 </View>
-                <View style={styles.detailRow}>
-                  <Text style={styles.detailLabel}>Date / Time</Text>
-                  <Text style={styles.detailValue}>{dateStr} · {timeStr}</Text>
-                </View>
-              </View>
 
-              {/* Balance Section */}
-              <View style={styles.balanceSection}>
-                <View style={styles.balRow}>
-                  <Text style={styles.balLabel}>Opening Balance</Text>
-                  <Text style={styles.balValue}>{formatPKRFull(receipt.openingBalance)}</Text>
+                {/* Shop Details */}
+                <View style={styles.receiptBody}>
+                  <Text style={styles.shopNameText}>{activeReceipt.shopName}</Text>
+                  <View style={styles.detailRow}>
+                    <Text style={styles.detailLabel}>Owner</Text>
+                    <Text style={styles.detailValue}>{activeReceipt.ownerName || 'N/A'}</Text>
+                  </View>
+                  <View style={styles.detailRow}>
+                    <Text style={styles.detailLabel}>Address</Text>
+                    <Text style={styles.detailValue}>{activeReceipt.address || 'N/A'}</Text>
+                  </View>
+                  {activeReceipt.shopPhone ? (
+                    <View style={styles.detailRow}>
+                      <Text style={styles.detailLabel}>Shop Phone</Text>
+                      <Text style={styles.detailValue}>{activeReceipt.shopPhone}</Text>
+                    </View>
+                  ) : null}
+                  <View style={styles.detailRow}>
+                    <Text style={styles.detailLabel}>Orderbooker</Text>
+                    <Text style={styles.detailValue}>{activeReceipt.orderbookerName}</Text>
+                  </View>
+                  <View style={styles.detailRow}>
+                    <Text style={styles.detailLabel}>Date / Time</Text>
+                    <Text style={styles.detailValue}>{dateStr} · {timeStr}</Text>
+                  </View>
                 </View>
-                <View style={styles.balRow}>
-                  <Text style={[styles.balLabel, { color: Colors.danger }]}>Payment Received</Text>
-                  <Text style={[styles.balValue, { color: Colors.danger }]}>- {formatPKRFull(receipt.paymentAmount)}</Text>
-                </View>
-                <View style={[styles.balRow, styles.balRowTotal]}>
-                  <Text style={styles.balLabelTotal}>Remaining Balance</Text>
-                  <Text style={styles.balValueTotal}>{formatPKRFull(receipt.remainingBalance)}</Text>
-                </View>
-              </View>
 
-              {/* Footer */}
-              <View style={styles.receiptFooter}>
-                <Text style={styles.thankYou}>Thank you for your payment!</Text>
-                <Text style={styles.txnId} numberOfLines={1}>Txn: {receipt.transactionId || 'Pending (offline)'}</Text>
+                {/* Balance Section */}
+                <View style={styles.balanceSection}>
+                  <View style={styles.balRow}>
+                    <Text style={styles.balLabel}>Opening Balance</Text>
+                    <Text style={styles.balValue}>{formatPKRFull(activeReceipt.openingBalance)}</Text>
+                  </View>
+                  <View style={styles.balRow}>
+                    <Text style={[styles.balLabel, { color: Colors.danger }]}>Payment Received</Text>
+                    <Text style={[styles.balValue, { color: Colors.danger }]}>- {formatPKRFull(activeReceipt.paymentAmount)}</Text>
+                  </View>
+                  <View style={[styles.balRow, styles.balRowTotal]}>
+                    <Text style={styles.balLabelTotal}>Remaining Balance</Text>
+                    <Text style={styles.balValueTotal}>{formatPKRFull(activeReceipt.remainingBalance)}</Text>
+                  </View>
+                </View>
+
+                {/* Footer */}
+                <View style={styles.receiptFooter}>
+                  <Text style={styles.thankYou}>Thank you for your payment!</Text>
+                  <Text style={styles.txnId} numberOfLines={1}>Txn: {activeReceipt.transactionId || 'Pending (offline)'}</Text>
+                </View>
               </View>
             </View>
 
-            {/* Action Buttons */}
-            <View style={styles.actions}>
-              <Pressable
-                style={[styles.actionBtn, styles.printBtn]}
-                onPress={handlePrint}
-                disabled={printing}
-              >
-                {printing ? (
-                  <ActivityIndicator size="small" color="#fff" />
-                ) : (
-                  <MaterialIcons name="print" size={18} color="#fff" />
-                )}
-                <Text style={styles.actionBtnText}>Print</Text>
-              </Pressable>
+            {/* ── Share Actions ──────────────────────────────────── */}
+            <View style={styles.shareSection}>
+              <Text style={styles.shareTitle}>Send Receipt</Text>
+              <View style={styles.actions}>
+                {/* WhatsApp */}
+                <Pressable
+                  style={[styles.actionBtn, styles.whatsappBtn]}
+                  onPress={handleWhatsApp}
+                  disabled={whatsApping}
+                >
+                  {whatsApping ? (
+                    <ActivityIndicator size="small" color="#25D366" />
+                  ) : (
+                    <MaterialIcons name="chat" size={22} color="#25D366" />
+                  )}
+                  <Text style={[styles.actionBtnText, { color: '#25D366' }]}>WhatsApp</Text>
+                </Pressable>
 
-              <Pressable
-                style={[styles.actionBtn, styles.shareBtn]}
-                onPress={handleShare}
-                disabled={sharing}
-              >
-                {sharing ? (
-                  <ActivityIndicator size="small" color={Colors.primary} />
-                ) : (
-                  <MaterialIcons name="share" size={18} color={Colors.primary} />
-                )}
-                <Text style={[styles.actionBtnText, { color: Colors.primary }]}>Share PDF</Text>
-              </Pressable>
+                {/* SMS */}
+                <Pressable
+                  style={[styles.actionBtn, styles.smsBtn]}
+                  onPress={handleSMS}
+                >
+                  <MaterialIcons name="sms" size={22} color={Colors.primary} />
+                  <Text style={[styles.actionBtnText, { color: Colors.primary }]}>SMS</Text>
+                </Pressable>
 
-              <Pressable
-                style={[styles.actionBtn, styles.whatsappBtn]}
-                onPress={handleWhatsApp}
-                disabled={whatsApping}
-              >
-                {whatsApping ? (
-                  <ActivityIndicator size="small" color="#25D366" />
-                ) : (
-                  <MaterialIcons name="chat" size={18} color="#25D366" />
-                )}
-                <Text style={[styles.actionBtnText, { color: '#25D366' }]}>WhatsApp</Text>
-              </Pressable>
+                {/* Print */}
+                <Pressable
+                  style={[styles.actionBtn, styles.printBtn]}
+                  onPress={handlePrint}
+                  disabled={printing}
+                >
+                  {printing ? (
+                    <ActivityIndicator size="small" color={Colors.textSecondary} />
+                  ) : (
+                    <MaterialIcons name="print" size={22} color={Colors.textSecondary} />
+                  )}
+                  <Text style={[styles.actionBtnText, { color: Colors.textSecondary }]}>Print</Text>
+                </Pressable>
+              </View>
+              <Text style={styles.shareHint}>
+                Receipt image saved in gallery — attach it when sending via WhatsApp
+              </Text>
             </View>
 
-            {/* Undo Button */}
+            {/* Undo */}
             {undoAvailable && onUndo && (
               <Pressable onPress={onUndo} style={styles.undoRow}>
                 <MaterialIcons name="undo" size={16} color={Colors.textSecondary} />
@@ -196,6 +348,25 @@ export function ReceiptModal({ visible, receipt, onClose, onUndo, undoAvailable 
           </Pressable>
         </View>
       </View>
+
+      {/* Shop Info Prompt — if phone/owner missing, shown AFTER recovery */}
+      <ShopInfoPrompt
+        visible={showInfoPrompt}
+        shop={activeReceipt ? {
+          id: activeReceipt.shopId,
+          name: activeReceipt.shopName,
+          ownerName: activeReceipt.ownerName || '',
+          area: '',
+          address: activeReceipt.address,
+          phone: activeReceipt.shopPhone,
+          routeDays: [],
+          balance: activeReceipt.openingBalance,
+          creditLimit: 0,
+          companyBalances: [],
+        } : null}
+        onDone={handleInfoDone}
+        onSkip={handleInfoSkip}
+      />
     </Modal>
   );
 }
@@ -237,7 +408,22 @@ const styles = StyleSheet.create({
   },
   successAmount: {
     fontSize: FontSize.xxl, fontWeight: FontWeight.extrabold, color: Colors.success,
-    marginBottom: Spacing.lg,
+    marginBottom: Spacing.sm,
+  },
+
+  // Gallery status
+  galleryStatus: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    marginBottom: Spacing.md,
+  },
+  galleryText: {
+    fontSize: FontSize.xs, color: Colors.textMuted, fontWeight: FontWeight.medium,
+  },
+
+  // Receipt capture area (this gets captured as image)
+  receiptCaptureArea: {
+    width: '100%',
+    backgroundColor: Colors.bg,
   },
 
   // Receipt Card
@@ -343,37 +529,48 @@ const styles = StyleSheet.create({
     fontSize: 10, color: Colors.textMuted, marginTop: 4,
   },
 
-  // Action buttons
+  // Share section
+  shareSection: {
+    width: '100%',
+    marginTop: Spacing.lg,
+  },
+  shareTitle: {
+    fontSize: FontSize.sm, fontWeight: FontWeight.semibold, color: Colors.textPrimary,
+    marginBottom: Spacing.sm, textAlign: 'center',
+  },
   actions: {
     flexDirection: 'row',
-    gap: 8,
-    marginTop: Spacing.lg,
+    gap: 10,
     width: '100%',
   },
   actionBtn: {
     flex: 1,
-    flexDirection: 'row',
+    flexDirection: 'column',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 10,
+    gap: 4,
+    paddingVertical: 14,
     borderRadius: Radius.md,
-    borderWidth: 1,
-  },
-  printBtn: {
-    backgroundColor: Colors.primary,
-    borderColor: Colors.primary,
-  },
-  shareBtn: {
-    backgroundColor: Colors.primaryMuted,
-    borderColor: Colors.primary,
+    borderWidth: 1.5,
   },
   whatsappBtn: {
     backgroundColor: 'rgba(37,211,102,0.12)',
     borderColor: '#25D366',
   },
+  smsBtn: {
+    backgroundColor: Colors.primaryMuted,
+    borderColor: Colors.primary,
+  },
+  printBtn: {
+    backgroundColor: Colors.surfaceElevated,
+    borderColor: Colors.border,
+  },
   actionBtnText: {
-    fontSize: FontSize.sm, fontWeight: FontWeight.bold, color: '#fff',
+    fontSize: FontSize.xs, fontWeight: FontWeight.bold,
+  },
+  shareHint: {
+    fontSize: 10, color: Colors.textMuted, textAlign: 'center',
+    marginTop: Spacing.sm, lineHeight: 14,
   },
 
   // Undo

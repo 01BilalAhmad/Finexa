@@ -4,7 +4,6 @@ import {
   Modal, ActivityIndicator, Alert,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
-import { Shop } from '@/types';
 import { useOffline } from '@/hooks/useOffline';
 import { apiUpdateShopInfo, apiUpdateShopPhone } from '@/services/api';
 import { StorageService } from '@/services/storage';
@@ -13,8 +12,8 @@ import { Button } from '@/components/ui/Button';
 
 interface ShopInfoPromptProps {
   visible: boolean;
-  shop: Shop | null;
-  onDone: (updatedShop: Shop) => void;
+  shop: { id: string; name: string; ownerName?: string; phone?: string; [key: string]: any } | null;
+  onDone: (updatedShop: { ownerName?: string; phone?: string }) => void;
   onSkip: () => void;
 }
 
@@ -66,14 +65,10 @@ export function ShopInfoPrompt({ visible, shop, onDone, onSkip }: ShopInfoPrompt
         });
       }
 
-      // Update local shop object
-      const updatedShop: Shop = {
-        ...shop,
+      onDone({
         ownerName: trimmedOwner || shop.ownerName,
         phone: trimmedPhone || shop.phone,
-      };
-
-      onDone(updatedShop);
+      });
     } catch (e: any) {
       Alert.alert('Error', e?.message || 'Failed to save shop info. You can skip and add later.');
     } finally {
