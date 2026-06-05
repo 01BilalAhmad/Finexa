@@ -14,6 +14,7 @@ import { getDayName, formatPKRFull } from '@/utils/format';
 import { ShopCard } from '@/components/feature/ShopCard';
 import { RecoverySheet } from '@/components/feature/RecoverySheet';
 import { SuccessOverlay } from '@/components/feature/SuccessOverlay';
+import { ReceiptModal } from '@/components/feature/ReceiptModal';
 import { ShopDetailModal } from '@/components/feature/ShopDetailModal';
 import { RouteStartCard } from '@/components/feature/RouteStartCard';
 import { RouteHeader } from '@/components/feature/RouteHeader';
@@ -31,6 +32,8 @@ export default function RouteScreen() {
   const [detailShop, setDetailShop] = useState<Shop | null>(null);
   const [successData, setSuccessData] = useState<{ amount: number; shop: Shop; txnId?: string } | null>(null);
   const [showSuccess, setShowSuccess] = useState(false);
+  const [receiptData, setReceiptData] = useState<ReceiptData | null>(null);
+  const [showReceipt, setShowReceipt] = useState(false);
   const [routeEnded, setRouteEnded] = useState(false);
 
   const todayDay = getDayName();
@@ -61,7 +64,8 @@ export default function RouteScreen() {
 
   function handleRecoverySuccess(amount: number, shop: Shop, receipt: ReceiptData, txnId?: string) {
     setSuccessData({ amount, shop, txnId });
-    setShowSuccess(true);
+    setReceiptData(receipt);
+    setShowReceipt(true);
   }
 
   async function handleUndo() {
@@ -71,7 +75,9 @@ export default function RouteScreen() {
     await unmarkVisited(shop.id);
     await unmarkRecoverySubmitted(key);
     subtractFromTodayTotal(amount);
+    setShowReceipt(false);
     setShowSuccess(false);
+    setReceiptData(null);
     setSuccessData(null);
   }
 
@@ -186,16 +192,14 @@ export default function RouteScreen() {
         onSuccess={handleRecoverySuccess}
       />
 
-      {/* Success Overlay */}
-      {successData && (
-        <SuccessOverlay
-          visible={showSuccess}
-          amount={successData.amount}
-          shopName={successData.shop.name}
-          onUndo={handleUndo}
-          onDismiss={() => setShowSuccess(false)}
-        />
-      )}
+      {/* Receipt Modal (replaces SuccessOverlay with full receipt view) */}
+      <ReceiptModal
+        visible={showReceipt}
+        receipt={receiptData}
+        onClose={() => { setShowReceipt(false); setReceiptData(null); }}
+        onUndo={handleUndo}
+        undoAvailable={!!receiptData}
+      />
 
       {/* Shop Detail Modal */}
       <ShopDetailModal

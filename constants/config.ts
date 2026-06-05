@@ -27,6 +27,10 @@ export const WAYPOINT_UPLOAD_INTERVAL_MS = 60000;  // Batch upload every 60 seco
 export const CREDIT_WARNING_THRESHOLD = 0.9; // 90%
 export const PROXIMITY_THRESHOLD_METERS = 100;
 
+// Receipt settings
+export const RECEIPT_COMPANY_NAME = 'Alfalah Traders'; // Default, overridden by company data
+export const RECEIPT_FOOTER_TEXT = 'This is a system-generated receipt.';
+
 export const APP_STORAGE_KEYS = {
   USER: 'finexa_user',
   TOKEN: 'finexa_token',
