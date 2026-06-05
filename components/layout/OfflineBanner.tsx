@@ -5,19 +5,24 @@ import { useOffline } from '@/hooks/useOffline';
 import { Colors, FontSize, FontWeight, Spacing } from '@/constants/theme';
 
 export function OfflineBanner() {
-  const { isOnline, pendingCount, syncStatus, triggerSync } = useOffline();
+  const { isOnline, pendingCount, pendingWaypoints, syncStatus, triggerSync } = useOffline();
 
-  if (isOnline && pendingCount === 0 && syncStatus === 'idle') return null;
+  if (isOnline && pendingCount === 0 && pendingWaypoints === 0 && syncStatus === 'idle') return null;
 
   let bgColor = Colors.surfaceElevated;
   let icon: any = 'wifi-off';
   let message = 'You are offline';
   let actionLabel = '';
 
+  const totalPending = pendingCount + pendingWaypoints;
+
   if (!isOnline) {
     bgColor = '#1c1c2e';
     icon = 'wifi-off';
-    message = pendingCount > 0 ? `Offline · ${pendingCount} pending` : 'You are offline';
+    const parts: string[] = [];
+    if (pendingCount > 0) parts.push(`${pendingCount} recovery`);
+    if (pendingWaypoints > 0) parts.push(`${pendingWaypoints} GPS pts`);
+    message = parts.length > 0 ? `Offline · ${parts.join(', ')} pending` : 'You are offline';
   } else if (syncStatus === 'syncing') {
     bgColor = Colors.indigoMuted;
     icon = 'sync';
@@ -25,16 +30,19 @@ export function OfflineBanner() {
   } else if (syncStatus === 'success') {
     bgColor = Colors.successMuted;
     icon = 'check-circle';
-    message = 'All recoveries synced';
+    message = 'All data synced';
   } else if (syncStatus === 'error') {
     bgColor = Colors.dangerMuted;
     icon = 'error-outline';
     message = 'Sync failed';
     actionLabel = 'Retry';
-  } else if (pendingCount > 0) {
+  } else if (totalPending > 0) {
     bgColor = Colors.warningMuted;
     icon = 'pending';
-    message = `${pendingCount} recover${pendingCount === 1 ? 'y' : 'ies'} pending`;
+    const parts: string[] = [];
+    if (pendingCount > 0) parts.push(`${pendingCount} recover${pendingCount === 1 ? 'y' : 'ies'}`);
+    if (pendingWaypoints > 0) parts.push(`${pendingWaypoints} GPS pts`);
+    message = `${parts.join(', ')} pending`;
     actionLabel = 'Sync Now';
   }
 
@@ -47,7 +55,7 @@ export function OfflineBanner() {
           syncStatus === 'success' ? Colors.success :
           syncStatus === 'error' ? Colors.danger :
           !isOnline ? Colors.textMuted :
-          pendingCount > 0 ? Colors.warning : Colors.textMuted
+          totalPending > 0 ? Colors.warning : Colors.textMuted
         } style={{ marginRight: 4 }} />
       )}
       <Text style={styles.msg}>{message}</Text>
