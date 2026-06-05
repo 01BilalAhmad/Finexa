@@ -1,22 +1,33 @@
 {
   "expo": {
-    "name": "onspace-app",
-    "slug": "onspace-app",
+    "name": "Finexa",
+    "slug": "finexa-recovery",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/logo.png",
-    "scheme": "onspaceapp",
+    "scheme": "finexa",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "Finexa needs your location to track your route and detect shop visits.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Finexa needs background location to track your route even when the app is minimized."
+      }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/logo.png",
         "backgroundColor": "#ffffff"
       },
-      "edgeToEdgeEnabled": true
+      "edgeToEdgeEnabled": true,
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_BACKGROUND_LOCATION",
+        "FOREGROUND_SERVICE",
+        "FOREGROUND_SERVICE_LOCATION"
+      ]
     },
     "web": {
       "bundler": "metro",
@@ -34,7 +45,20 @@
           "backgroundColor": "#ffffff"
         }
       ],
-      "expo-web-browser"
+      "expo-web-browser",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Finexa needs your location to track your route and detect shop visits.",
+          "locationAlwaysAndWhenInUsePermission": "Finexa needs background location to track your route even when the app is minimized."
+        }
+      ],
+      [
+        "expo-task-manager"
+      ],
+      [
+        "expo-notifications"
+      ]
     ],
     "experiments": {
       "typedRoutes": true
