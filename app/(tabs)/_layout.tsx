@@ -24,7 +24,7 @@ export default function TabLayout() {
 
   useEffect(() => {
     if (isAuthenticated && selectedCompany) {
-      loadShops(selectedCompany.id, user?.id);
+      loadShops(selectedCompany.id, user?.id, user?.allRoutesAccess);
       restoreShopState();
       checkPin();
     }

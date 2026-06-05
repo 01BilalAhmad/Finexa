@@ -2,6 +2,7 @@ import React, { createContext, useState, useCallback, ReactNode } from 'react';
 import { StorageService } from '@/services/storage';
 import { apiGetShops, apiMobileSync } from '@/services/api';
 import { Shop } from '@/types';
+import { getDayName } from '@/utils/format';
 
 interface ShopsContextType {
   shops: Shop[];
@@ -9,7 +10,7 @@ interface ShopsContextType {
   visitedShops: Set<string>;
   recoverySubmitted: Set<string>;
   todayTotal: number;
-  loadShops: (companyId: string, userId?: string) => Promise<void>;
+  loadShops: (companyId: string, userId?: string, allRoutesAccess?: boolean) => Promise<void>;
   markVisited: (shopId: string) => Promise<void>;
   unmarkVisited: (shopId: string) => Promise<void>;
   markRecoverySubmitted: (key: string) => Promise<void>;
@@ -41,22 +42,28 @@ export function ShopsProvider({ children }: { children: ReactNode }) {
     setRecoverySubmitted(new Set(submitted));
   }, []);
 
-  const loadShops = useCallback(async (companyId: string, userId?: string) => {
+  const loadShops = useCallback(async (companyId: string, userId?: string, allRoutesAccess?: boolean) => {
     setIsLoading(true);
     try {
       let fetched: Shop[];
+      const todayDay = getDayName();
 
-      // Try mobile sync first (returns more data including transactions)
-      if (userId) {
+      // Determine routeDay filter: if allRoutesAccess is ON, no routeDay filter (show all shops)
+      // If OFF, only today's route shops
+      const routeDay = allRoutesAccess ? undefined : todayDay;
+
+      if (allRoutesAccess && userId) {
+        // All routes mode: use mobile sync to get all shops for this orderbooker
         try {
           const syncData = await apiMobileSync(userId);
           fetched = syncData.shops;
         } catch {
           // Fallback to shops-only API
-          fetched = await apiGetShops(companyId);
+          fetched = await apiGetShops(companyId, { orderbookerId: userId });
         }
       } else {
-        fetched = await apiGetShops(companyId);
+        // Route-wise mode: only today's shops using routeDay filter
+        fetched = await apiGetShops(companyId, { orderbookerId: userId, routeDay });
       }
 
       setShops(fetched);
