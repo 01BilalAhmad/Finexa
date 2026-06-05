@@ -11,18 +11,18 @@ import { Colors, FontSize, FontWeight } from '@/constants/theme';
 
 function SplashScreen({ onDone }: { onDone: () => void }) {
   useEffect(() => {
-    const t = setTimeout(onDone, 2500);
+    const t = setTimeout(onDone, 1500);
     return () => clearTimeout(t);
   }, []);
 
   return (
     <View style={styles.splash}>
-      <Image
-        source={require('@/assets/splash-bismillah.png')}
-        style={styles.splashImg}
-        resizeMode="cover"
-      />
-      <View style={styles.splashOverlay}>
+      <View style={styles.splashContent}>
+        <Image
+          source={require('@/assets/images/logo.png')}
+          style={styles.splashLogo}
+          resizeMode="contain"
+        />
         <Text style={styles.appName}>Finexa</Text>
         <Text style={styles.appSub}>Al-Falah Credit System</Text>
       </View>
@@ -63,9 +63,9 @@ export default function RootLayout() {
 }
 
 const styles = StyleSheet.create({
-  splash: { flex: 1, backgroundColor: '#070d1a' },
-  splashImg: { width: '100%', height: '100%', position: 'absolute' },
-  splashOverlay: { flex: 1, alignItems: 'center', justifyContent: 'flex-end', paddingBottom: 60 },
+  splash: { flex: 1, backgroundColor: '#070d1a', alignItems: 'center', justifyContent: 'center' },
+  splashContent: { alignItems: 'center' },
+  splashLogo: { width: 120, height: 120, marginBottom: 16 },
   appName: { fontSize: 32, fontWeight: FontWeight.extrabold, color: '#f1f5f9', letterSpacing: 2 },
   appSub: { fontSize: FontSize.sm, color: '#94a3b8', marginTop: 4 },
 });

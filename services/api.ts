@@ -69,9 +69,12 @@ export async function apiValidateToken(token: string) {
 
 // ─── Shops ──────────────────────────────────────────────────────────────────
 
-export async function apiGetShops(companyId: string): Promise<Shop[]> {
+export async function apiGetShops(companyId: string, options?: { orderbookerId?: string; routeDay?: string; balanceOnly?: boolean }): Promise<Shop[]> {
   const params = new URLSearchParams();
   if (companyId) params.set('companyId', companyId);
+  if (options?.orderbookerId) params.set('orderbookerId', options.orderbookerId);
+  if (options?.routeDay) params.set('routeDay', options.routeDay);
+  if (options?.balanceOnly) params.set('balanceOnly', 'true');
   const data = await request<Shop[]>(`/api/shops?${params.toString()}`);
   return Array.isArray(data) ? data : [];
 }

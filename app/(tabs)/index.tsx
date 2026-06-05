@@ -23,7 +23,7 @@ import { CompanySelector } from '@/components/layout/CompanySelector';
 export default function RouteScreen() {
   const insets = useSafeAreaInsets();
   const { user, selectedCompany } = useAuth();
-  const { shops, isLoading, todayTotal, visitedShops, unmarkVisited, unmarkRecoverySubmitted, subtractFromTodayTotal } = useShops();
+  const { shops, isLoading, todayTotal, visitedShops, recoverySubmitted, unmarkVisited, unmarkRecoverySubmitted, subtractFromTodayTotal } = useShops();
   const { isRouteActive, activeRoute, routeEnabled } = useRoute();
 
   const [search, setSearch] = useState('');
@@ -39,9 +39,12 @@ export default function RouteScreen() {
 
   const filteredShops = useMemo(() => {
     let base = shops;
-    // Filter by today's route day
-    if (!activeRoute?.isEnded) {
-      base = shops.filter(s => s.routeDays.includes(todayDay));
+    // When route is ended, show only shops where recovery was NOT already added (late recovery)
+    if (activeRoute?.isEnded) {
+      base = shops.filter(s => {
+        const recoveryKey = selectedCompany ? `${s.id}_${selectedCompany.id}` : s.id;
+        return !recoverySubmitted.has(recoveryKey) && s.balance > 0;
+      });
     }
     // Search
     if (search.trim()) {
@@ -54,12 +57,9 @@ export default function RouteScreen() {
       );
     }
     return base;
-  }, [shops, search, todayDay, activeRoute]);
+  }, [shops, search, todayDay, activeRoute, selectedCompany, recoverySubmitted]);
 
-  const todayShopCount = useMemo(() =>
-    shops.filter(s => s.routeDays.includes(todayDay)).length,
-    [shops, todayDay]
-  );
+  const todayShopCount = useMemo(() => shops.length, [shops]);
 
   function handleRecoverySuccess(amount: number, shop: Shop, receipt: ReceiptData, txnId?: string) {
     setSuccessData({ amount, shop, txnId });
