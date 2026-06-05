@@ -1,13 +1,13 @@
 import React, { useState, useMemo } from 'react';
 import {
   View, Text, StyleSheet, FlatList, Pressable,
-  TextInput, Modal, ActivityIndicator, ScrollView,
+  TextInput, Modal, ActivityIndicator, ScrollView, Alert,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useShops } from '@/hooks/useShops';
 import { useAuth } from '@/hooks/useAuth';
-import { apiGetLedger } from '@/services/api';
+import { apiGetLedger, apiEditPendingRecovery } from '@/services/api';
 import { Shop, LedgerEntry } from '@/types';
 import { Colors, FontSize, FontWeight, Radius, Spacing } from '@/constants/theme';
 import { formatPKRFull, formatPKR, formatDate } from '@/utils/format';
@@ -17,13 +17,20 @@ import { CompanySelector } from '@/components/layout/CompanySelector';
 export default function LedgerScreen() {
   const insets = useSafeAreaInsets();
   const { shops } = useShops();
-  const { selectedCompany } = useAuth();
+  const { selectedCompany, user } = useAuth();
 
   const [shopSearch, setShopSearch] = useState('');
   const [selectorOpen, setSelectorOpen] = useState(false);
   const [selectedShop, setSelectedShop] = useState<Shop | null>(null);
   const [ledger, setLedger] = useState<LedgerEntry | null>(null);
   const [loading, setLoading] = useState(false);
+
+  // Edit pending modal state
+  const [editModal, setEditModal] = useState(false);
+  const [editTxn, setEditTxn] = useState<{ id: string; amount: number; description?: string; shopName: string } | null>(null);
+  const [editAmount, setEditAmount] = useState('');
+  const [editDesc, setEditDesc] = useState('');
+  const [editLoading, setEditLoading] = useState(false);
 
   const filteredShops = useMemo(() => {
     if (!shopSearch.trim()) return shops.slice(0, 30);
@@ -45,6 +52,47 @@ export default function LedgerScreen() {
       setLedger(data);
     } catch { /* ignore */ }
     finally { setLoading(false); }
+  }
+
+  async function refreshLedger() {
+    if (!selectedShop) return;
+    setLoading(true);
+    try {
+      const data = await apiGetLedger(selectedShop.id, selectedCompany?.id || '');
+      setLedger(data);
+    } catch { /* ignore */ }
+    finally { setLoading(false); }
+  }
+
+  function openEdit(txn: { id: string; amount: number; description?: string; shopName?: string }) {
+    setEditTxn({ id: txn.id, amount: txn.amount, description: txn.description, shopName: txn.shopName || '' });
+    setEditAmount(txn.amount.toString());
+    setEditDesc(txn.description || '');
+    setEditModal(true);
+  }
+
+  async function submitEdit() {
+    if (!editTxn) return;
+    const newAmount = parseInt(editAmount.replace(/,/g, ''), 10);
+    if (!newAmount || newAmount < 100) {
+      Alert.alert('Invalid Amount', 'Minimum recovery amount is Rs. 100');
+      return;
+    }
+    if (newAmount > 500000) {
+      Alert.alert('Invalid Amount', 'Maximum recovery amount is Rs. 500,000');
+      return;
+    }
+    setEditLoading(true);
+    try {
+      await apiEditPendingRecovery(editTxn.id, newAmount, editDesc.trim() || undefined);
+      setEditModal(false);
+      Alert.alert('Updated', `Amount updated from Rs. ${editTxn.amount.toLocaleString()} to Rs. ${newAmount.toLocaleString()}`);
+      refreshLedger();
+    } catch (e: any) {
+      Alert.alert('Error', e?.message || 'Failed to update recovery');
+    } finally {
+      setEditLoading(false);
+    }
   }
 
   return (
@@ -130,10 +178,22 @@ export default function LedgerScreen() {
                     }]}>
                       {txn.type === 'credit' ? '+' : '-'}{formatPKR(txn.amount)}
                     </Text>
-                    <Badge
-                      label={txn.status.charAt(0).toUpperCase() + txn.status.slice(1)}
-                      variant={txn.status === 'approved' ? 'success' : txn.status === 'pending' ? 'warning' : 'danger'}
-                    />
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <Badge
+                        label={txn.status.charAt(0).toUpperCase() + txn.status.slice(1)}
+                        variant={txn.status === 'approved' ? 'success' : txn.status === 'pending' ? 'warning' : 'danger'}
+                      />
+                      {/* Edit button — ONLY for pending recoveries */}
+                      {txn.type === 'recovery' && txn.status === 'pending' && (
+                        <Pressable
+                          onPress={() => openEdit(txn)}
+                          style={styles.editBtn}
+                          hitSlop={4}
+                        >
+                          <MaterialIcons name="edit" size={14} color={Colors.warning} />
+                        </Pressable>
+                      )}
+                    </View>
                   </View>
                 </View>
               ))
@@ -181,6 +241,75 @@ export default function LedgerScreen() {
           />
         </View>
       </Modal>
+
+      {/* ── Edit Pending Recovery Modal ── */}
+      <Modal visible={editModal} transparent animationType="fade">
+        <View style={styles.editOverlay}>
+          <View style={styles.editContainer}>
+            <View style={styles.editHeader}>
+              <Text style={styles.editTitle}>Edit Pending Recovery</Text>
+              <Pressable onPress={() => setEditModal(false)} hitSlop={8}>
+                <MaterialIcons name="close" size={20} color={Colors.textSecondary} />
+              </Pressable>
+            </View>
+
+            {editTxn && (
+              <>
+                <Text style={styles.editShopName}>{editTxn.shopName}</Text>
+
+                {/* Old Amount */}
+                <View style={styles.editOldRow}>
+                  <Text style={styles.editOldLabel}>Current Amount:</Text>
+                  <Text style={styles.editOldValue}>Rs. {editTxn.amount.toLocaleString('en-PK')}</Text>
+                </View>
+
+                {/* New Amount */}
+                <Text style={styles.editFieldLabel}>New Amount (Rs.)</Text>
+                <TextInput
+                  style={styles.editInput}
+                  value={editAmount}
+                  onChangeText={setEditAmount}
+                  keyboardType="number-pad"
+                  placeholder="Enter new amount"
+                  placeholderTextColor={Colors.textMuted}
+                  autoFocus
+                />
+
+                {/* Description */}
+                <Text style={styles.editFieldLabel}>Description (optional)</Text>
+                <TextInput
+                  style={[styles.editInput, { minHeight: 44 }]}
+                  value={editDesc}
+                  onChangeText={setEditDesc}
+                  placeholder="Add note..."
+                  placeholderTextColor={Colors.textMuted}
+                  multiline
+                />
+
+                {/* Actions */}
+                <View style={styles.editActions}>
+                  <Pressable style={styles.editCancelBtn} onPress={() => setEditModal(false)}>
+                    <Text style={styles.editCancelText}>Cancel</Text>
+                  </Pressable>
+                  <Pressable
+                    style={[styles.editSaveBtn, editLoading && { opacity: 0.7 }]}
+                    onPress={submitEdit}
+                    disabled={editLoading}
+                  >
+                    {editLoading ? (
+                      <ActivityIndicator size="small" color="#fff" />
+                    ) : (
+                      <Text style={styles.editSaveText}>Update</Text>
+                    )}
+                  </Pressable>
+                </View>
+
+                <Text style={styles.editNote}>Only pending recoveries can be edited. Approved transactions cannot be modified.</Text>
+              </>
+            )}
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -224,6 +353,14 @@ const styles = StyleSheet.create({
   txnDate: { fontSize: FontSize.xs, color: Colors.textMuted, marginTop: 1 },
   txnDesc: { fontSize: FontSize.xs, color: Colors.textMuted, marginTop: 1 },
   txnAmount: { fontSize: FontSize.sm, fontWeight: FontWeight.bold },
+
+  // Edit button on pending transaction
+  editBtn: {
+    width: 24, height: 24, borderRadius: 12,
+    backgroundColor: 'rgba(245,158,11,0.12)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+
   selectorModal: { flex: 1, backgroundColor: Colors.bg },
   selectorHeader: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
@@ -246,4 +383,108 @@ const styles = StyleSheet.create({
   shopItemName: { fontSize: FontSize.sm, fontWeight: FontWeight.semibold, color: Colors.textPrimary },
   shopItemSub: { fontSize: FontSize.xs, color: Colors.textMuted, marginTop: 1 },
   shopItemBalance: { fontSize: FontSize.sm, fontWeight: FontWeight.bold, color: Colors.warning },
+
+  // ── Edit Pending Modal ──
+  editOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  editContainer: {
+    width: '100%',
+    maxWidth: 380,
+    backgroundColor: Colors.bg,
+    borderRadius: 16,
+    padding: 20,
+  },
+  editHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  editTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: Colors.textPrimary,
+  },
+  editShopName: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: Colors.primary,
+    marginBottom: 12,
+  },
+  editOldRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    backgroundColor: Colors.surface,
+    padding: 10,
+    borderRadius: 8,
+    marginBottom: 14,
+  },
+  editOldLabel: {
+    fontSize: 13,
+    color: Colors.textMuted,
+  },
+  editOldValue: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: Colors.warning,
+  },
+  editFieldLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: Colors.textSecondary,
+    marginBottom: 4,
+  },
+  editInput: {
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 15,
+    color: Colors.textPrimary,
+    marginBottom: 12,
+  },
+  editActions: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 4,
+  },
+  editCancelBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    alignItems: 'center',
+  },
+  editCancelText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: Colors.textSecondary,
+  },
+  editSaveBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 10,
+    backgroundColor: Colors.primary,
+    alignItems: 'center',
+  },
+  editSaveText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#fff',
+  },
+  editNote: {
+    fontSize: 10,
+    color: Colors.textMuted,
+    textAlign: 'center',
+    marginTop: 10,
+    lineHeight: 14,
+  },
 });
