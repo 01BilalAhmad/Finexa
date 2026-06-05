@@ -13,8 +13,8 @@ import { Colors, FontSize, FontWeight, Radius, Spacing } from '@/constants/theme
 export default function LoginScreen() {
   const insets = useSafeAreaInsets();
   const { login } = useAuth();
-  const [username, setUsername] = useState('demo');
-  const [password, setPassword] = useState('1234');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
   const [showPass, setShowPass] = useState(false);
   const [loading, setLoading] = useState(false);
 
@@ -48,10 +48,7 @@ export default function LoginScreen() {
           </View>
           <Text style={styles.appTitle}>Finexa</Text>
           <Text style={styles.appTagline}>Al-Falah Credit System</Text>
-          <View style={styles.mockBadge}>
-            <MaterialIcons name="lock-open" size={12} color={Colors.warning} />
-            <Text style={styles.mockText}>MOCK LOGIN · demo / 1234</Text>
-          </View>
+
         </View>
 
         {/* Form */}
@@ -126,8 +123,7 @@ const styles = StyleSheet.create({
   },
   appTitle: { fontSize: 32, fontWeight: FontWeight.extrabold, color: Colors.textPrimary, letterSpacing: 1 },
   appTagline: { fontSize: FontSize.sm, color: Colors.textSecondary, marginTop: 2, marginBottom: Spacing.sm },
-  mockBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: Colors.warningMuted, paddingHorizontal: 10, paddingVertical: 4, borderRadius: Radius.full, marginTop: 4 },
-  mockText: { fontSize: FontSize.xs, color: Colors.warning, fontWeight: FontWeight.medium },
+
   form: { backgroundColor: Colors.surface, borderRadius: Radius.xl, padding: Spacing.lg, borderWidth: 1, borderColor: Colors.border, marginBottom: Spacing.lg },
   formTitle: { fontSize: FontSize.xl, fontWeight: FontWeight.bold, color: Colors.textPrimary, marginBottom: 4 },
   formSub: { fontSize: FontSize.sm, color: Colors.textSecondary, marginBottom: Spacing.lg },

@@ -150,4 +150,29 @@ export const StorageService = {
   async isTourDone(): Promise<boolean> {
     return (await AsyncStorage.getItem(APP_STORAGE_KEYS.TOUR_DONE)) === '1';
   },
+
+  // ─── GPS Waypoints Queue (for offline tracking) ───────────────────────────
+  async getGpsQueue(): Promise<any[]> {
+    const v = await AsyncStorage.getItem(APP_STORAGE_KEYS.WAYPOINTS);
+    return v ? JSON.parse(v) : [];
+  },
+  async addGpsPoint(point: any): Promise<void> {
+    const queue = await StorageService.getGpsQueue();
+    queue.push(point);
+    // Trim to max 2000 points
+    while (queue.length > 2000) queue.shift();
+    await AsyncStorage.setItem(APP_STORAGE_KEYS.WAYPOINTS, JSON.stringify(queue));
+  },
+  async removeGpsPoints(count: number): Promise<void> {
+    const queue = await StorageService.getGpsQueue();
+    const remaining = queue.slice(count);
+    await AsyncStorage.setItem(APP_STORAGE_KEYS.WAYPOINTS, JSON.stringify(remaining));
+  },
+  async getGpsQueueCount(): Promise<number> {
+    const queue = await StorageService.getGpsQueue();
+    return queue.length;
+  },
+  async clearGpsQueue(): Promise<void> {
+    await AsyncStorage.removeItem(APP_STORAGE_KEYS.WAYPOINTS);
+  },
 };

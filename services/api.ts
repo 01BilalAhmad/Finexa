@@ -1,262 +1,250 @@
 import { API_BASE } from '@/constants/config';
 import { Shop, Transaction, OfflineRecovery, ActiveRoute, LedgerEntry } from '@/types';
 
-// Mock delay helper
-const mockDelay = (ms = 600) => new Promise(res => setTimeout(res, ms));
-
+// ─── Auth Token Management ──────────────────────────────────────────────────
 let authToken: string | null = null;
 export const setAuthToken = (token: string | null) => { authToken = token; };
 
-const headers = () => ({
+const headers = (): Record<string, string> => ({
   'Content-Type': 'application/json',
   ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
 });
 
-// ─── Mock Data ────────────────────────────────────────────────────────────────
+// ─── Generic Request Helper ─────────────────────────────────────────────────
+async function request<T>(path: string, options?: RequestInit): Promise<T> {
+  const url = `${API_BASE}${path}`;
+  const res = await fetch(url, { headers: headers(), ...options });
 
-const MOCK_SHOPS: Shop[] = [
-  {
-    id: 's1', name: 'Al-Noor General Store', ownerName: 'Ahmed Khan', area: 'Gulshan',
-    address: 'Shop 12, Gulshan Market', phone: '03001234567',
-    routeDays: ['Monday', 'Thursday'], balance: 45000, creditLimit: 100000,
-    companyBalances: [{ companyId: 'c1', outstanding: 45000, creditLimit: 100000 }],
-    lastRecoveryDate: new Date(Date.now() - 3 * 86400000).toISOString(),
-    latitude: 24.8607, longitude: 67.0105,
-  },
-  {
-    id: 's2', name: 'Bismillah Traders', ownerName: 'Muhammad Ali', area: 'PECHS',
-    address: 'Block 6, PECHS', phone: '03021234567',
-    routeDays: ['Monday', 'Wednesday'], balance: 92000, creditLimit: 100000,
-    companyBalances: [{ companyId: 'c1', outstanding: 92000, creditLimit: 100000 }],
-    lastRecoveryDate: new Date(Date.now() - 7 * 86400000).toISOString(),
-    latitude: 24.8697, longitude: 67.0600,
-  },
-  {
-    id: 's3', name: 'Habib Medical Store', ownerName: 'Habib Ur Rehman', area: 'Saddar',
-    address: 'Burns Road, Saddar', phone: '03031234567',
-    routeDays: ['Monday', 'Tuesday', 'Thursday'], balance: 0, creditLimit: 50000,
-    companyBalances: [{ companyId: 'c1', outstanding: 0, creditLimit: 50000 }],
-    lastRecoveryDate: new Date().toISOString(),
-    latitude: 24.8543, longitude: 67.0328,
-  },
-  {
-    id: 's4', name: 'Farooq Electronics', ownerName: 'Farooq Siddiqui', area: 'Defence',
-    address: 'Phase 5, DHA', phone: '03041234567',
-    routeDays: ['Monday', 'Saturday'], balance: 115000, creditLimit: 120000,
-    companyBalances: [{ companyId: 'c1', outstanding: 115000, creditLimit: 120000 }],
-    lastRecoveryDate: new Date(Date.now() - 2 * 86400000).toISOString(),
-    latitude: 24.8074, longitude: 67.0366,
-  },
-  {
-    id: 's5', name: 'Rehman Grocery', ownerName: 'Rehman Butt', area: 'Gulshan',
-    address: 'Block 13, Gulshan', phone: '03051234567',
-    routeDays: ['Monday', 'Wednesday', 'Saturday'], balance: 28000, creditLimit: 80000,
-    companyBalances: [{ companyId: 'c1', outstanding: 28000, creditLimit: 80000 }],
-    lastRecoveryDate: new Date(Date.now() - 1 * 86400000).toISOString(),
-    latitude: 24.9000, longitude: 67.0800,
-  },
-  {
-    id: 's6', name: 'City Mart', ownerName: 'Zafar Iqbal', area: 'Nazimabad',
-    address: 'Block 1, Nazimabad', phone: '03061234567',
-    routeDays: ['Tuesday', 'Thursday'], balance: 67000, creditLimit: 150000,
-    companyBalances: [{ companyId: 'c1', outstanding: 67000, creditLimit: 150000 }],
-    lastRecoveryDate: new Date(Date.now() - 5 * 86400000).toISOString(),
-    latitude: 24.9200, longitude: 67.0300,
-  },
-  {
-    id: 's7', name: 'Sunrise Bakery', ownerName: 'Imran Shah', area: 'FB Area',
-    address: 'Block 17, FB Area', phone: '03071234567',
-    routeDays: ['Wednesday', 'Saturday'], balance: 34500, creditLimit: 60000,
-    companyBalances: [{ companyId: 'c1', outstanding: 34500, creditLimit: 60000 }],
-    lastRecoveryDate: new Date(Date.now() - 10 * 86400000).toISOString(),
-    latitude: 24.9500, longitude: 67.0400,
-  },
-  {
-    id: 's8', name: 'Khan Brothers', ownerName: 'Waqar Khan', area: 'Orangi',
-    address: 'Sector 11, Orangi', phone: '03081234567',
-    routeDays: ['Monday', 'Tuesday', 'Wednesday', 'Thursday'], balance: 55000, creditLimit: 75000,
-    companyBalances: [{ companyId: 'c1', outstanding: 55000, creditLimit: 75000 }],
-    lastRecoveryDate: new Date(Date.now() - 4 * 86400000).toISOString(),
-    latitude: 24.9600, longitude: 66.9900,
-  },
-];
+  if (!res.ok) {
+    let errorMsg = `HTTP ${res.status}`;
+    try {
+      const data = await res.json();
+      errorMsg = data.error || data.message || errorMsg;
+    } catch { /* ignore parse error */ }
+    throw new Error(errorMsg);
+  }
 
-const MOCK_TRANSACTIONS: Record<string, Transaction[]> = {
-  s1: [
-    { id: 't1', shopId: 's1', type: 'credit', amount: 50000, status: 'approved', date: '2026-05-28', createdAt: '2026-05-28T10:00:00Z', description: 'Monthly credit' },
-    { id: 't2', shopId: 's1', type: 'recovery', amount: 5000, status: 'approved', date: '2026-06-01', createdAt: '2026-06-01T11:00:00Z' },
-    { id: 't3', shopId: 's1', type: 'recovery', amount: 0, status: 'pending', date: '2026-06-04', createdAt: '2026-06-04T09:30:00Z', description: 'Cash collected' },
-  ],
-  s2: [
-    { id: 't4', shopId: 's2', type: 'credit', amount: 100000, status: 'approved', date: '2026-05-25', createdAt: '2026-05-25T10:00:00Z' },
-    { id: 't5', shopId: 's2', type: 'recovery', amount: 8000, status: 'approved', date: '2026-05-30', createdAt: '2026-05-30T10:00:00Z' },
-  ],
-};
+  return res.json();
+}
 
-// ─── Auth ─────────────────────────────────────────────────────────────────────
+// ─── Auth ───────────────────────────────────────────────────────────────────
 
 export async function apiLogin(username: string, password: string) {
-  await mockDelay(800);
-  // Mock credentials: demo/1234 or any non-empty
-  if (!username || !password) throw new Error('Credentials required');
-  if (username === 'demo' && password !== '1234') throw new Error('Invalid password');
+  const res = await request<{ user: any; token: string }>('/api/auth/login', {
+    method: 'POST',
+    body: JSON.stringify({ username, password }),
+  });
 
+  // Normalize user data to match our types
   const user = {
-    id: 'u1', username, name: username === 'demo' ? 'Ahmed Orderbooker' : username,
-    phone: '03009876543', role: 'orderbooker', status: 'active',
-    companies: [
-      { id: 'c1', name: 'Al-Falah Traders', distributorPhone: '03331234567' },
-      { id: 'c2', name: 'Metro Distribution', distributorPhone: '03221234567' },
-    ],
-    allRoutesAccess: false,
+    id: res.user.id,
+    username: res.user.username,
+    name: res.user.name,
+    phone: res.user.phone || '',
+    role: res.user.role,
+    status: res.user.status,
+    companies: res.user.companies || [],
+    allRoutesAccess: res.user.allRoutesEnabled || false,
   };
-  const token = 'mock_token_' + Date.now();
-  return { user, token };
+
+  return { user, token: res.token };
 }
 
 export async function apiValidateToken(token: string) {
-  await mockDelay(300);
-  return token.startsWith('mock_token_');
+  try {
+    const res = await request<{ valid: boolean }>('/api/auth/validate');
+    return res.valid;
+  } catch {
+    return false;
+  }
 }
 
-// ─── Shops ────────────────────────────────────────────────────────────────────
+// ─── Shops ──────────────────────────────────────────────────────────────────
 
 export async function apiGetShops(companyId: string): Promise<Shop[]> {
-  await mockDelay(700);
-  return MOCK_SHOPS;
+  const params = new URLSearchParams();
+  if (companyId) params.set('companyId', companyId);
+  const data = await request<Shop[]>(`/api/shops?${params.toString()}`);
+  return Array.isArray(data) ? data : [];
 }
 
-export async function apiMobileSync(companyId: string) {
-  await mockDelay(1000);
-  return { shops: MOCK_SHOPS, timestamp: new Date().toISOString() };
+export async function apiMobileSync(userId: string) {
+  const data = await request<{ shops: Shop[]; syncTime?: string }>(`/api/mobile/sync?userId=${userId}`);
+  return { shops: data.shops || [], timestamp: data.syncTime || new Date().toISOString() };
 }
 
-// ─── Transactions ─────────────────────────────────────────────────────────────
+// ─── Transactions ───────────────────────────────────────────────────────────
 
 export async function apiSubmitRecovery(data: {
   shopId: string; amount: number; orderbookerId: string;
   gpsLat?: number; gpsLng?: number; description?: string;
   companyId: string; idempotencyKey: string;
 }) {
-  await mockDelay(800);
-  const txn: Transaction = {
-    id: 'txn_' + Date.now(),
-    shopId: data.shopId,
-    type: 'recovery',
-    amount: data.amount,
-    status: 'pending',
-    date: new Date().toISOString().split('T')[0],
-    createdAt: new Date().toISOString(),
-    description: data.description,
-    gpsLat: data.gpsLat,
-    gpsLng: data.gpsLng,
-    companyId: data.companyId,
-    orderbookerId: data.orderbookerId,
-  };
-  return txn;
+  return request<Transaction>('/api/transactions', {
+    method: 'POST',
+    body: JSON.stringify({
+      shopId: data.shopId,
+      type: 'recovery',
+      amount: data.amount,
+      createdBy: data.orderbookerId,
+      description: data.description,
+      gpsLat: data.gpsLat,
+      gpsLng: data.gpsLng,
+      companyId: data.companyId,
+      idempotencyKey: data.idempotencyKey,
+    }),
+  });
 }
 
 export async function apiDeleteTransaction(id: string) {
-  await mockDelay(400);
+  await request<any>(`/api/transactions?id=${id}`, { method: 'DELETE' });
   return true;
 }
 
 export async function apiEditPendingRecovery(id: string, amount: number, description?: string) {
-  await mockDelay(500);
+  await request<any>('/api/transactions/edit-pending', {
+    method: 'PATCH',
+    body: JSON.stringify({ id, amount, description }),
+  });
   return true;
 }
 
 export async function apiGetTransactions(shopId: string, companyId: string): Promise<Transaction[]> {
-  await mockDelay(600);
-  return MOCK_TRANSACTIONS[shopId] || [];
+  const params = new URLSearchParams({ shopId, limit: '50' });
+  if (companyId) params.set('companyId', companyId);
+  const data = await request<{ transactions: Transaction[] } | Transaction[]>(`/api/transactions?${params.toString()}`);
+  if (Array.isArray(data)) return data;
+  return data.transactions || [];
 }
 
-// ─── GPS Visit ────────────────────────────────────────────────────────────────
+// ─── GPS Visit ──────────────────────────────────────────────────────────────
 
 export async function apiRecordVisit(shopId: string, data: {
   orderbookerId: string; lat: number; lng: number;
   address?: string; companyId: string; routeId?: string;
 }) {
-  await mockDelay(400);
-  return { id: 'visit_' + Date.now() };
+  return request<{ id: string }>(`/api/shops/${shopId}/visits`, {
+    method: 'POST',
+    body: JSON.stringify({
+      orderbookerId: data.orderbookerId,
+      gpsLat: data.lat,
+      gpsLng: data.lng,
+      gpsAddress: data.address,
+      inRange: true,
+    }),
+  });
 }
 
-// ─── Route Tracking ───────────────────────────────────────────────────────────
+// ─── Route Tracking ─────────────────────────────────────────────────────────
 
 export async function apiStartRoute(data: {
   orderbookerId: string; companyId: string;
   startLat?: number; startLng?: number;
 }) {
-  await mockDelay(600);
-  return { id: 'route_' + Date.now() };
+  return request<{ id: string; startTime?: string }>(`/api/route-sessions/start`, {
+    method: 'POST',
+    body: JSON.stringify({
+      orderbookerId: data.orderbookerId,
+      startLat: data.startLat,
+      startLng: data.startLng,
+    }),
+  });
 }
 
 export async function apiEndRoute(routeId: string, data: {
   endLat?: number; endLng?: number;
 }) {
-  await mockDelay(600);
-  return true;
+  return request<any>(`/api/route-sessions/end`, {
+    method: 'POST',
+    body: JSON.stringify({
+      sessionId: routeId,
+      endLat: data.endLat,
+      endLng: data.endLng,
+    }),
+  });
+}
+
+export async function apiSendLocation(data: {
+  sessionId: string; lat: number; lng: number;
+  accuracy?: number; speed?: number; altitude?: number;
+  batteryLevel?: number; isOffline?: boolean;
+}) {
+  return request<{ success: boolean; shopProximity?: any }>(`/api/route-sessions/location`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function apiUploadWaypoints(sessionId: string, locations: Array<{
+  lat: number; lng: number; accuracy?: number; speed?: number;
+  altitude?: number; batteryLevel?: number; isOffline?: boolean;
+  recordedAt?: string;
+}>) {
+  return request<{ saved: number; shopProximity?: any }>(`/api/route-sessions/locations-batch`, {
+    method: 'POST',
+    body: JSON.stringify({ sessionId, locations }),
+  });
+}
+
+export async function apiGetActiveRoute(orderbookerId: string) {
+  return request<{ session?: any; shopVisits?: any[] }>(`/api/route-sessions/active?orderbookerId=${orderbookerId}`);
 }
 
 export async function apiCheckInShop(routeId: string, shopId: string, data: {
   lat?: number; lng?: number;
 }) {
-  await mockDelay(300);
+  // Server auto-detects shop visits via proximity — this is a manual fallback
   return { id: 'stop_' + Date.now() };
 }
 
 export async function apiCheckOutShop(stopId: string, data: {
   lat?: number; lng?: number; recoveryAmount?: number;
 }) {
-  await mockDelay(300);
-  return true;
-}
-
-export async function apiUploadWaypoints(routeId: string, waypoints: any[]) {
-  await mockDelay(400);
+  // Server auto-detects shop exit via proximity
   return true;
 }
 
 export async function apiGetRouteSettings(): Promise<{ enabled: boolean }> {
-  await mockDelay(300);
   return { enabled: true };
 }
 
-// ─── Ledger ───────────────────────────────────────────────────────────────────
+// ─── Ledger ─────────────────────────────────────────────────────────────────
 
 export async function apiGetLedger(shopId: string, companyId: string): Promise<LedgerEntry> {
-  await mockDelay(800);
-  const shop = MOCK_SHOPS.find(s => s.id === shopId);
-  const transactions = MOCK_TRANSACTIONS[shopId] || [];
-  const totalCredit = transactions.filter(t => t.type === 'credit').reduce((s, t) => s + t.amount, 0);
-  const totalRecovery = transactions.filter(t => t.type === 'recovery').reduce((s, t) => s + t.amount, 0);
-  return {
-    shopId,
-    shopName: shop?.name || 'Unknown',
-    ownerName: shop?.ownerName || '',
-    area: shop?.area || '',
-    totalCredit,
-    totalRecovery,
-    balance: totalCredit - totalRecovery,
-    transactions: transactions.sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
-  };
+  const params = new URLSearchParams({ shopId, limit: '50' });
+  if (companyId) params.set('companyId', companyId);
+  return request<LedgerEntry>(`/api/reports/ledger?${params.toString()}`);
 }
 
-// ─── Recovery Summary ─────────────────────────────────────────────────────────
+// ─── Recovery Summary ───────────────────────────────────────────────────────
 
 export async function apiGetRecoverySummary(orderbookerId: string, companyId: string) {
-  await mockDelay(500);
-  return {
-    todayTotal: 0,
-    monthTotal: 145000,
-    shopsAssigned: MOCK_SHOPS.length,
-    shopsVisited: 0,
-  };
+  const params = new URLSearchParams();
+  if (orderbookerId) params.set('orderbookerId', orderbookerId);
+  if (companyId) params.set('companyId', companyId);
+  try {
+    return request<any>(`/api/reports/recovery-summary?${params.toString()}`);
+  } catch {
+    return { todayTotal: 0, monthTotal: 0, shopsAssigned: 0, shopsVisited: 0 };
+  }
 }
 
-// ─── Shop Phone ───────────────────────────────────────────────────────────────
+// ─── Shop Phone ─────────────────────────────────────────────────────────────
 
 export async function apiUpdateShopPhone(shopId: string, phone: string) {
-  await mockDelay(400);
+  await request<any>(`/api/shops/phone`, {
+    method: 'PATCH',
+    body: JSON.stringify({ shopId, phone }),
+  });
   return true;
+}
+
+// ─── Company ────────────────────────────────────────────────────────────────
+
+export async function apiGetCompanies(userId: string) {
+  return request<any[]>(`/api/companies?userId=${userId}`);
+}
+
+export async function apiGetDistributorPhone(companyId: string) {
+  return request<{ distributorPhone: string; companyName: string }>(`/api/companies/distributor-phone?companyId=${companyId}`);
 }
