@@ -154,6 +154,10 @@ export function RecoverySheet({ visible, shop, onClose, onSuccess }: RecoveryShe
       onClose();
       onSuccess(parsedAmount, shop, receipt, txnId);
     } catch (e: any) {
+      if (e?.message === 'SESSION_EXPIRED') {
+        Alert.alert('Session Expired', 'Your session has expired. Please log in again.');
+        return;
+      }
       Alert.alert('Error', e?.message || 'Failed to submit recovery. Please try again.');
     } finally {
       setLoading(false);

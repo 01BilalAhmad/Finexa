@@ -8,7 +8,7 @@ import { useShops } from '@/hooks/useShops';
 import { Colors, FontSize, FontWeight, Radius, Spacing } from '@/constants/theme';
 import { formatElapsed, formatPKRFull, formatTime } from '@/utils/format';
 
-function generateMapHtml(route: any, stops: any[]): string {
+function generateMapHtml(route: any, stops: any[], waypoints: any[]): string {
   const center = route?.startLat
     ? [route.startLat, route.startLng]
     : [24.8607, 67.0105];
@@ -31,10 +31,28 @@ function generateMapHtml(route: any, stops: any[]): string {
     }).addTo(map).bindPopup('<b>${m.name}</b><br>PKR ${m.amount.toLocaleString()}');
   `).join('\n');
 
-  const polylinePoints = markers.map(m => `[${m.lat}, ${m.lng}]`).join(',');
-  const polylineJs = markers.length > 1
-    ? `L.polyline([${polylinePoints}], {color:'#3b82f6', weight:3, opacity:0.7, dashArray:'6,4'}).addTo(map);`
+  // Draw full route polyline from waypoints (GPS trail)
+  const waypointPoints = waypoints.map(wp => `[${wp.lat}, ${wp.lng}]`).join(',');
+  const routePolylineJs = waypoints.length > 1
+    ? `L.polyline([${waypointPoints}], {color:'#3b82f6', weight:4, opacity:0.8}).addTo(map);`
     : '';
+
+  // Also draw stop-to-stop polyline
+  const polylinePoints = markers.map(m => `[${m.lat}, ${m.lng}]`).join(',');
+  const stopPolylineJs = markers.length > 1
+    ? `L.polyline([${polylinePoints}], {color:'#3b82f6', weight:2, opacity:0.4, dashArray:'6,4'}).addTo(map);`
+    : '';
+
+  // Current position (pulsing dot) - last waypoint
+  const lastWp = waypoints.length > 0 ? waypoints[waypoints.length - 1] : null;
+  const currentPosJs = lastWp ? `
+    L.marker([${lastWp.lat}, ${lastWp.lng}], {
+      icon: L.divIcon({
+        html: '<div style="width:16px;height:16px;border-radius:50%;background:#ef4444;border:3px solid white;box-shadow:0 0 0 2px #ef4444,0 2px 8px rgba(239,68,68,0.5);animation:pulse 2s infinite"></div>',
+        className: '', iconSize: [16, 16], iconAnchor: [8, 8]
+      })
+    }).addTo(map).bindPopup('<b>Your Location</b>');
+  ` : '';
 
   const startMarkerJs = `
     L.marker([${center[0]}, ${center[1]}], {
@@ -49,37 +67,50 @@ function generateMapHtml(route: any, stops: any[]): string {
 <html><head>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-<style>body,html,#map{margin:0;padding:0;height:100%;background:#070d1a}</style>
+<style>
+body,html,#map{margin:0;padding:0;height:100%;background:#070d1a}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(239,68,68,0.7)}70%{box-shadow:0 0 0 10px rgba(239,68,68,0)}100%{box-shadow:0 0 0 0 rgba(239,68,68,0)}}
+</style>
 </head><body>
 <div id="map"></div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 var map = L.map('map', {zoomControl:true}).setView([${center[0]}, ${center[1]}], 13);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-  attribution:'© OpenStreetMap', maxZoom:19
+  attribution:'&copy; OpenStreetMap', maxZoom:19
 }).addTo(map);
 ${startMarkerJs}
 ${markersJs}
-${polylineJs}
+${routePolylineJs}
+${stopPolylineJs}
+${currentPosJs}
 </script>
 </body></html>`;
 }
 
 export default function MapScreen() {
   const insets = useSafeAreaInsets();
-  const { activeRoute, isRouteActive, elapsedSeconds } = useRoute();
+  const { activeRoute, isRouteActive, elapsedSeconds, waypointCount, lastWaypoint } = useRoute();
   const { visitedShops, todayTotal } = useShops();
   const [webViewError, setWebViewError] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
 
   const stops = activeRoute?.stops || [];
+  const waypoints = activeRoute?.waypoints || [];
 
   useEffect(() => {
     if (isRouteActive) {
-      const t = setInterval(() => setRefreshKey(k => k + 1), 15000);
+      const t = setInterval(() => setRefreshKey(k => k + 1), 10000);
       return () => clearInterval(t);
     }
   }, [isRouteActive]);
+
+  // Refresh on new waypoint
+  useEffect(() => {
+    if (lastWaypoint) {
+      setRefreshKey(k => k + 1);
+    }
+  }, [lastWaypoint?.timestamp]);
 
   if (!activeRoute) {
     return (
@@ -96,7 +127,7 @@ export default function MapScreen() {
     );
   }
 
-  const mapHtml = generateMapHtml(activeRoute, stops);
+  const mapHtml = generateMapHtml(activeRoute, stops, waypoints);
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
@@ -124,7 +155,7 @@ export default function MapScreen() {
         </View>
         <View style={styles.infoItem}>
           <MaterialIcons name="gps-fixed" size={14} color={Colors.textMuted} />
-          <Text style={styles.infoText}>{stops.filter(s => s.isGpsStop).length} GPS</Text>
+          <Text style={styles.infoText}>{waypointCount} pts</Text>
         </View>
         <View style={styles.infoItem}>
           <MaterialIcons name="payments" size={14} color={Colors.success} />
@@ -151,6 +182,10 @@ export default function MapScreen() {
           <View style={styles.routeInfoCard}>
             <Text style={styles.routeInfoLabel}>Start Time</Text>
             <Text style={styles.routeInfoValue}>{formatTime(activeRoute.startTime)}</Text>
+          </View>
+          <View style={styles.routeInfoCard}>
+            <Text style={styles.routeInfoLabel}>GPS Points</Text>
+            <Text style={styles.routeInfoValue}>{waypointCount}</Text>
           </View>
           <View style={styles.routeInfoCard}>
             <Text style={styles.routeInfoLabel}>Total Stops</Text>
@@ -189,12 +224,12 @@ export default function MapScreen() {
           <Text style={styles.legendText}>Start</Text>
         </View>
         <View style={styles.legendItem}>
-          <View style={[styles.legendDot, { backgroundColor: Colors.success }]} />
-          <Text style={styles.legendText}>Checked out</Text>
+          <View style={[styles.legendDot, { backgroundColor: '#3b82f6' }]} />
+          <Text style={styles.legendText}>GPS Trail</Text>
         </View>
         <View style={styles.legendItem}>
-          <View style={[styles.legendDot, { backgroundColor: Colors.primary }]} />
-          <Text style={styles.legendText}>In progress</Text>
+          <View style={[styles.legendDot, { backgroundColor: '#ef4444' }]} />
+          <Text style={styles.legendText}>Current</Text>
         </View>
       </View>
     </View>

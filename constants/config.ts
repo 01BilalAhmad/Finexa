@@ -20,9 +20,9 @@ export const OFFLINE_EXPIRY_DAYS = 7;
 export const STALE_ROUTE_HOURS = 24;
 export const UNDO_WINDOW_MS = 4000;
 export const SUCCESS_OVERLAY_MS = 2500;
-export const WAYPOINT_INTERVAL_MS = 5000;
-export const WAYPOINT_BATCH_SIZE = 100;
-export const WAYPOINT_UPLOAD_INTERVAL_MS = 30000;
+export const WAYPOINT_INTERVAL_MS = 30000;       // GPS capture every 30 seconds
+export const WAYPOINT_BATCH_SIZE = 500;            // Max batch size for API
+export const WAYPOINT_UPLOAD_INTERVAL_MS = 60000;  // Batch upload every 60 seconds
 
 export const CREDIT_WARNING_THRESHOLD = 0.9; // 90%
 export const PROXIMITY_THRESHOLD_METERS = 100;

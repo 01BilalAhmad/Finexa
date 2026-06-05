@@ -1,6 +1,6 @@
 import React, { createContext, useState, useCallback, ReactNode } from 'react';
 import { StorageService } from '@/services/storage';
-import { apiGetShops } from '@/services/api';
+import { apiGetShops, apiMobileSync } from '@/services/api';
 import { Shop } from '@/types';
 
 interface ShopsContextType {
@@ -9,7 +9,7 @@ interface ShopsContextType {
   visitedShops: Set<string>;
   recoverySubmitted: Set<string>;
   todayTotal: number;
-  loadShops: (companyId: string) => Promise<void>;
+  loadShops: (companyId: string, userId?: string) => Promise<void>;
   markVisited: (shopId: string) => Promise<void>;
   unmarkVisited: (shopId: string) => Promise<void>;
   markRecoverySubmitted: (key: string) => Promise<void>;
@@ -17,6 +17,7 @@ interface ShopsContextType {
   addToTodayTotal: (amount: number) => void;
   subtractFromTodayTotal: (amount: number) => void;
   updateShopPhone: (shopId: string, phone: string) => void;
+  updateShopBalance: (shopId: string, newBalance: number) => void;
   restoreShopState: () => Promise<void>;
 }
 
@@ -40,13 +41,28 @@ export function ShopsProvider({ children }: { children: ReactNode }) {
     setRecoverySubmitted(new Set(submitted));
   }, []);
 
-  const loadShops = useCallback(async (companyId: string) => {
+  const loadShops = useCallback(async (companyId: string, userId?: string) => {
     setIsLoading(true);
     try {
-      const fetched = await apiGetShops(companyId);
+      let fetched: Shop[];
+
+      // Try mobile sync first (returns more data including transactions)
+      if (userId) {
+        try {
+          const syncData = await apiMobileSync(userId);
+          fetched = syncData.shops;
+        } catch {
+          // Fallback to shops-only API
+          fetched = await apiGetShops(companyId);
+        }
+      } else {
+        fetched = await apiGetShops(companyId);
+      }
+
       setShops(fetched);
       await StorageService.saveShops(fetched);
     } catch {
+      // Offline: load from cache
       const cached = await StorageService.getShops();
       if (cached.length) setShops(cached);
     } finally {
@@ -86,12 +102,16 @@ export function ShopsProvider({ children }: { children: ReactNode }) {
     setShops(prev => prev.map(s => s.id === shopId ? { ...s, phone } : s));
   }, []);
 
+  const updateShopBalance = useCallback((shopId: string, newBalance: number) => {
+    setShops(prev => prev.map(s => s.id === shopId ? { ...s, balance: newBalance } : s));
+  }, []);
+
   return (
     <ShopsContext.Provider value={{
       shops, isLoading, visitedShops, recoverySubmitted, todayTotal,
       loadShops, markVisited, unmarkVisited, markRecoverySubmitted,
       unmarkRecoverySubmitted, addToTodayTotal, subtractFromTodayTotal,
-      updateShopPhone, restoreShopState,
+      updateShopPhone, updateShopBalance, restoreShopState,
     }}>
       {children}
     </ShopsContext.Provider>

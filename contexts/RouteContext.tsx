@@ -1,6 +1,13 @@
 import React, { createContext, useState, useCallback, useEffect, useRef, ReactNode } from 'react';
 import { StorageService } from '@/services/storage';
-import { apiStartRoute, apiEndRoute } from '@/services/api';
+import { apiStartRoute, apiEndRoute, apiGetActiveRoute } from '@/services/api';
+import {
+  startLocationTracking,
+  stopLocationTracking,
+  getCurrentLocation,
+  flushWaypointQueue,
+  resumeTrackingIfNeeded,
+} from '@/services/locationTracking';
 import { ActiveRoute, RouteStop } from '@/types';
 import { STALE_ROUTE_HOURS } from '@/constants/config';
 
@@ -49,14 +56,21 @@ export function RouteProvider({ children }: { children: ReactNode }) {
   }
 
   async function restoreRoute() {
+    // First try to restore from local storage
     const route = await StorageService.getActiveRoute();
-    if (route) {
+    if (route && !route.isEnded) {
       const hoursSinceStart = (Date.now() - new Date(route.startTime).getTime()) / 3600000;
-      if (hoursSinceStart > STALE_ROUTE_HOURS || route.isEnded) {
-        await StorageService.saveActiveRoute(null);
+      if (hoursSinceStart > STALE_ROUTE_HOURS) {
+        // Route is stale — auto-end it
+        await endRoute(route.startLat, route.startLng);
         return;
       }
       setActiveRoute(route);
+
+      // Resume GPS tracking if there's an active session
+      if (!route.isLocal) {
+        await resumeTrackingIfNeeded();
+      }
     }
   }
 
@@ -64,22 +78,39 @@ export function RouteProvider({ children }: { children: ReactNode }) {
     setIsLoading(true);
     try {
       let routeId = 'local_' + Date.now();
+      let isLocal = false;
+
       try {
         const res = await apiStartRoute({ orderbookerId, companyId, startLat: lat, startLng: lng });
-        routeId = res.id;
-      } catch {
-        // Use local ID
+        if (res.id) {
+          routeId = res.id;
+          isLocal = false;
+        }
+      } catch (err) {
+        // API failed — use local ID, will sync later
+        console.warn('[Route] API start failed, using local ID:', err);
+        isLocal = true;
       }
+
       const route: ActiveRoute = {
         id: routeId,
-        isLocal: routeId.startsWith('local_'),
+        isLocal,
         startTime: new Date().toISOString(),
-        startLat: lat, startLng: lng,
-        orderbookerId, companyId,
-        stops: [], waypoints: [],
+        startLat: lat,
+        startLng: lng,
+        orderbookerId,
+        companyId,
+        stops: [],
+        waypoints: [],
       };
+
       setActiveRoute(route);
       await StorageService.saveActiveRoute(route);
+
+      // Start GPS tracking (continuous location updates)
+      if (!isLocal) {
+        await startLocationTracking(routeId, orderbookerId);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -89,16 +120,29 @@ export function RouteProvider({ children }: { children: ReactNode }) {
     if (!activeRoute) return null;
     setIsLoading(true);
     try {
-      try {
-        if (!activeRoute.isLocal) {
+      // Stop GPS tracking first
+      await stopLocationTracking();
+
+      // Flush any remaining waypoints
+      if (!activeRoute.isLocal) {
+        try {
+          await flushWaypointQueue(activeRoute.id);
+        } catch { /* continue */ }
+
+        // End route on server
+        try {
           await apiEndRoute(activeRoute.id, { endLat: lat, endLng: lng });
-        }
-      } catch { /* continue */ }
+        } catch { /* continue even if API fails */ }
+      }
+
       const ended: ActiveRoute = {
-        ...activeRoute, isEnded: true,
+        ...activeRoute,
+        isEnded: true,
         endTime: new Date().toISOString(),
-        endLat: lat, endLng: lng,
+        endLat: lat,
+        endLng: lng,
       };
+
       setActiveRoute(ended);
       await StorageService.saveActiveRoute(ended);
       return ended;
