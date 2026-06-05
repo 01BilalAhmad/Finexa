@@ -289,7 +289,7 @@ export function ReceiptModal({ visible, receipt, onClose, onUndo, undoAvailable 
                   </View>
                   <View style={styles.urduBox}>
                     <Text style={styles.urduText2}>
-                      اگر آپ کو بلنس کسی قسم کا کوئی فرق محسوس ہوتا ہے تو اوپر دیے گئے نمبر پر لازمی رابطہ کریں شکریہ
+                      اگر آپ کو بلنس میں کسی قسم کا کوئی فرق محسوس ہوتا ہے تو اوپر دیے گئے نمبر پر لازمی رابطہ کریں شکریہ
                     </Text>
                   </View>
                   <Text style={styles.txnId} numberOfLines={1}>Txn: {activeReceipt.transactionId || 'Pending (offline)'}</Text>

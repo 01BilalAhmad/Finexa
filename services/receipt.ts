@@ -247,7 +247,7 @@ export function generateReceiptHTML(receipt: ReceiptData): string {
         جب آپ کا کریڈٹ لیمٹ 15 ہزار روپے سے زیادہ ہو گا تو
       </div>
       <div class="urdu-text-bold">
-        اگر آپ کو بلنس کسی قسم کا کوئی فرق محسوس ہوتا ہے تو اوپر دیے گئے نمبر پر لازمی رابطہ کریں شکریہ
+        اگر آپ کو بلنس میں کسی قسم کا کوئی فرق محسوس ہوتا ہے تو اوپر دیے گئے نمبر پر لازمی رابطہ کریں شکریہ
       </div>
       <div class="txn-id">Txn: ${txnLabel}</div>
     </div>
