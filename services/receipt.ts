@@ -182,7 +182,6 @@ export function generateReceiptHTML(receipt: ReceiptData): string {
     <!-- Header -->
     <div class="header">
       <div class="company-name">${receipt.companyName}</div>
-      <div class="distributor-phone">Distributor Name: <span>${receipt.companyName}</span></div>
       <div class="distributor-phone">Distributor No: <span>${receipt.distributorPhone || 'N/A'}</span></div>
       <div class="receipt-title">Payment Receipt</div>
     </div>
@@ -287,7 +286,6 @@ export async function shareReceiptWhatsApp(receipt: ReceiptData): Promise<void> 
 
   const text = [
     `*${receipt.companyName}*`,
-    `Distributor Name: ${receipt.companyName}`,
     `Distributor No: ${receipt.distributorPhone || 'N/A'}`,
     `━━━━━━━━━━━━━━━━━━`,
     `*Payment Receipt*`,
