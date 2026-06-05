@@ -36,6 +36,14 @@ export async function apiLogin(username: string, password: string) {
   });
 
   // Normalize user data to match our types
+  // Backend returns companies as: { companyId, companyName, distributorPhone, isPrimary }
+  // Frontend Company type expects: { id, name, distributorPhone }
+  const companies = (res.user.companies || []).map((c: any) => ({
+    id: c.companyId || c.id,
+    name: c.companyName || c.name,
+    distributorPhone: c.distributorPhone || '',
+  }));
+
   const user = {
     id: res.user.id,
     username: res.user.username,
@@ -43,7 +51,7 @@ export async function apiLogin(username: string, password: string) {
     phone: res.user.phone || '',
     role: res.user.role,
     status: res.user.status,
-    companies: res.user.companies || [],
+    companies,
     allRoutesAccess: res.user.allRoutesEnabled || false,
   };
 
