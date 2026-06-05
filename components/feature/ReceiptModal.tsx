@@ -93,7 +93,8 @@ export function ReceiptModal({ visible, receipt, onClose, onUndo, undoAvailable 
 
       const text = [
         `*${r.companyName}*`,
-        `Distributor: ${r.distributorPhone || 'N/A'}`,
+        `Distributor Name: ${r.companyName}`,
+        `Distributor No: ${r.distributorPhone || 'N/A'}`,
         `━━━━━━━━━━━━━━━━━━`,
         `*Payment Receipt*`,
         ``,
@@ -230,7 +231,8 @@ export function ReceiptModal({ visible, receipt, onClose, onUndo, undoAvailable 
                 {/* Header — Company */}
                 <View style={styles.receiptHeader}>
                   <Text style={styles.companyName}>{activeReceipt.companyName}</Text>
-                  <Text style={styles.distPhone}>Distributor: <Text style={styles.distPhoneBold}>{activeReceipt.distributorPhone || 'N/A'}</Text></Text>
+                  <Text style={styles.distLabel}>Distributor Name: <Text style={styles.distPhoneBold}>{activeReceipt.companyName}</Text></Text>
+                  <Text style={styles.distLabel}>Distributor No: <Text style={styles.distPhoneBold}>{activeReceipt.distributorPhone || 'N/A'}</Text></Text>
                   <View style={styles.receiptBadge}>
                     <Text style={styles.receiptBadgeText}>PAYMENT RECEIPT</Text>
                   </View>
@@ -452,7 +454,7 @@ const styles = StyleSheet.create({
     fontSize: FontSize.lg, fontWeight: FontWeight.extrabold, color: Colors.textPrimary,
     textTransform: 'uppercase', letterSpacing: 0.5,
   },
-  distPhone: {
+  distLabel: {
     fontSize: FontSize.xs, color: Colors.textSecondary, marginTop: 2,
   },
   distPhoneBold: {
