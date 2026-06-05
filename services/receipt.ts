@@ -175,6 +175,19 @@ export function generateReceiptHTML(receipt: ReceiptData): string {
       border-radius: 4px;
       font-family: 'Noto Naskh Arabic', 'Arial', sans-serif;
     }
+    .urdu-text-bold {
+      font-size: 13px;
+      color: #1a1a2e;
+      font-weight: 700;
+      direction: rtl;
+      text-align: right;
+      line-height: 1.8;
+      margin-top: 8px;
+      padding: 8px;
+      background: #f5f5f5;
+      border-radius: 4px;
+      font-family: 'Noto Naskh Arabic', 'Arial', sans-serif;
+    }
   </style>
 </head>
 <body>
@@ -229,16 +242,14 @@ export function generateReceiptHTML(receipt: ReceiptData): string {
 
     <!-- Footer -->
     <div class="footer">
-      <div class="thank-you">Thank you for your Payment!</div>
       <div class="urdu-text">
         جب تک آپ کا کریڈٹ لیمٹ 15 ہزار روپے تک ہو گا آپ ہر دن 5 روپے کا سود دے گے<br/>
         جب آپ کا کریڈٹ لیمٹ 15 ہزار روپے سے زیادہ ہو گا تو
       </div>
-      <div class="txn-id">Txn: ${txnLabel}</div>
-      <div class="footer-text">
-        This is a system-generated receipt from ${receipt.companyName}.<br/>
-        Distributor: ${receipt.companyName} | Contact: ${receipt.distributorPhone || 'N/A'}
+      <div class="urdu-text-bold">
+        اگر آپ کو بلنس کسی قسم کا کوئی فرق محسوس ہوتا ہے تو اوپر دیے گئے نمبر پر لازمی رابطہ کریں شکریہ
       </div>
+      <div class="txn-id">Txn: ${txnLabel}</div>
     </div>
   </div>
 </body>
