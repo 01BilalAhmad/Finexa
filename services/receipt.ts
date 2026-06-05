@@ -295,8 +295,6 @@ export function generateReceiptHTML(receipt: ReceiptData): string {
         اگر آپ کو بلنس میں کسی قسم کا کوئی فرق محسوس ہوتا ہے تو اوپر دیے گئے نمبر پر لازمی رابطہ کریں شکریہ
       </div>
     </div>
-
-    <div class="txn-id">Txn: ${txnLabel}</div>
   </div>
 </body>
 </html>`;

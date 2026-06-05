@@ -331,9 +331,6 @@ export function ReceiptModal({ visible, receipt, onClose, onUndo, undoAvailable 
                     اگر آپ کو بلنس میں کسی قسم کا کوئی فرق محسوس ہوتا ہے تو اوپر دیے گئے نمبر پر لازمی رابطہ کریں شکریہ
                   </Text>
                 </View>
-
-                {/* Txn ID */}
-                <Text style={styles.txnId} numberOfLines={1}>Txn: {activeReceipt.transactionId || 'Pending (offline)'}</Text>
               </View>
             </View>
 
@@ -620,14 +617,6 @@ const styles = StyleSheet.create({
     textAlign: 'right',
     writingDirection: 'rtl',
     lineHeight: 20,
-  },
-
-  // Txn ID
-  txnId: {
-    fontSize: 10,
-    color: R.gray,
-    textAlign: 'center',
-    marginTop: 6,
   },
 
   // ── SHARE SECTION ──
