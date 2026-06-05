@@ -1,23 +1,24 @@
 import React, { useState, useMemo } from 'react';
 import {
   View, Text, StyleSheet, FlatList, Pressable,
-  TextInput, Modal, ActivityIndicator, ScrollView, Alert,
+  TextInput, Modal, ActivityIndicator, ScrollView, Alert, Linking,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useShops } from '@/hooks/useShops';
 import { useAuth } from '@/hooks/useAuth';
 import { apiGetLedger, apiEditPendingRecovery } from '@/services/api';
-import { Shop, LedgerEntry } from '@/types';
+import { Shop, LedgerEntry, ReceiptData } from '@/types';
 import { Colors, FontSize, FontWeight, Radius, Spacing } from '@/constants/theme';
-import { formatPKRFull, formatPKR, formatDate } from '@/utils/format';
+import { formatPKRFull, formatPKR, formatDate, formatTime } from '@/utils/format';
 import { Badge } from '@/components/ui/Badge';
 import { CompanySelector } from '@/components/layout/CompanySelector';
+import { ReceiptModal } from '@/components/feature/ReceiptModal';
 
 export default function LedgerScreen() {
   const insets = useSafeAreaInsets();
   const { shops } = useShops();
-  const { selectedCompany, user } = useAuth();
+  const { selectedCompany, user, distributorPhone } = useAuth();
 
   const [shopSearch, setShopSearch] = useState('');
   const [selectorOpen, setSelectorOpen] = useState(false);
@@ -27,10 +28,14 @@ export default function LedgerScreen() {
 
   // Edit pending modal state
   const [editModal, setEditModal] = useState(false);
-  const [editTxn, setEditTxn] = useState<{ id: string; amount: number; description?: string; shopName: string } | null>(null);
+  const [editTxn, setEditTxn] = useState<{ id: string; amount: number; description?: string; shopName: string; shopId: string; previousBalance?: number } | null>(null);
   const [editAmount, setEditAmount] = useState('');
   const [editDesc, setEditDesc] = useState('');
   const [editLoading, setEditLoading] = useState(false);
+
+  // Receipt modal state (for regenerated receipt after edit)
+  const [receiptVisible, setReceiptVisible] = useState(false);
+  const [regeneratedReceipt, setRegeneratedReceipt] = useState<ReceiptData | null>(null);
 
   const filteredShops = useMemo(() => {
     if (!shopSearch.trim()) return shops.slice(0, 30);
@@ -64,15 +69,15 @@ export default function LedgerScreen() {
     finally { setLoading(false); }
   }
 
-  function openEdit(txn: { id: string; amount: number; description?: string; shopName?: string }) {
-    setEditTxn({ id: txn.id, amount: txn.amount, description: txn.description, shopName: txn.shopName || '' });
+  function openEdit(txn: { id: string; amount: number; description?: string; shopName?: string; shopId: string }) {
+    setEditTxn({ id: txn.id, amount: txn.amount, description: txn.description, shopName: txn.shopName || '', shopId: txn.shopId });
     setEditAmount(txn.amount.toString());
     setEditDesc(txn.description || '');
     setEditModal(true);
   }
 
   async function submitEdit() {
-    if (!editTxn) return;
+    if (!editTxn || !selectedShop) return;
     const newAmount = parseInt(editAmount.replace(/,/g, ''), 10);
     if (!newAmount || newAmount < 100) {
       Alert.alert('Invalid Amount', 'Minimum recovery amount is Rs. 100');
@@ -85,8 +90,32 @@ export default function LedgerScreen() {
     setEditLoading(true);
     try {
       await apiEditPendingRecovery(editTxn.id, newAmount, editDesc.trim() || undefined);
+
+      // Generate updated receipt with new amount
+      const shop = selectedShop;
+      const openingBalance = shop.balance; // Current shop balance (pending hasn't affected it)
+      const remainingBalance = openingBalance - newAmount; // Projected if approved
+
+      const updatedReceipt: ReceiptData = {
+        shopId: shop.id,
+        shopName: shop.name,
+        shopPhone: shop.phone,
+        ownerName: shop.ownerName,
+        address: shop.address,
+        orderbookerName: user?.name || '',
+        distributorPhone: distributorPhone || '',
+        companyName: selectedCompany?.name || '',
+        openingBalance,
+        paymentAmount: newAmount,
+        remainingBalance,
+        date: new Date().toISOString(),
+      };
+
+      setRegeneratedReceipt(updatedReceipt);
       setEditModal(false);
-      Alert.alert('Updated', `Amount updated from Rs. ${editTxn.amount.toLocaleString()} to Rs. ${newAmount.toLocaleString()}`);
+      setReceiptVisible(true);
+
+      // Refresh ledger in background
       refreshLedger();
     } catch (e: any) {
       Alert.alert('Error', e?.message || 'Failed to update recovery');
@@ -299,17 +328,30 @@ export default function LedgerScreen() {
                     {editLoading ? (
                       <ActivityIndicator size="small" color="#fff" />
                     ) : (
-                      <Text style={styles.editSaveText}>Update</Text>
+                      <>
+                        <MaterialIcons name="check" size={16} color="#fff" />
+                        <Text style={styles.editSaveText}>Update & Receipt</Text>
+                      </>
                     )}
                   </Pressable>
                 </View>
 
-                <Text style={styles.editNote}>Only pending recoveries can be edited. Approved transactions cannot be modified.</Text>
+                <Text style={styles.editNote}>Updated receipt will be generated automatically so you can share with shopkeeper.</Text>
               </>
             )}
           </View>
         </View>
       </Modal>
+
+      {/* ── Regenerated Receipt Modal ── */}
+      <ReceiptModal
+        visible={receiptVisible}
+        receipt={regeneratedReceipt}
+        onClose={() => {
+          setReceiptVisible(false);
+          setRegeneratedReceipt(null);
+        }}
+      />
     </View>
   );
 }
@@ -470,10 +512,13 @@ const styles = StyleSheet.create({
   },
   editSaveBtn: {
     flex: 1,
+    flexDirection: 'row',
     paddingVertical: 12,
     borderRadius: 10,
     backgroundColor: Colors.primary,
     alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
   },
   editSaveText: {
     fontSize: 14,
