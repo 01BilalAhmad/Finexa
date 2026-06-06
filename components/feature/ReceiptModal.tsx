@@ -2,11 +2,34 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
   View, Text, Modal, StyleSheet, Pressable, ScrollView, Animated,
 } from 'react-native';
-import { MaterialIcons } from '@expo/vector-icons';
+import { MaterialIcons, FontAwesome5, Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ReceiptData } from '@/types';
-import { Colors, FontSize, FontWeight, Radius, Spacing } from '@/constants/theme';
 import { formatPKRFull, formatDate } from '@/utils/format';
+
+// ── Receipt Color Palette ──────────────────────────────────────────
+const C = {
+  darkBlue: '#1B2A4A',
+  deepBlue: '#0F1B33',
+  teal: '#4ECDC4',
+  tealMuted: '#3BA99F',
+  yellow: '#FFD93D',
+  yellowDark: '#F0C929',
+  white: '#FFFFFF',
+  white70: 'rgba(255,255,255,0.7)',
+  white50: 'rgba(255,255,255,0.5)',
+  white20: 'rgba(255,255,255,0.15)',
+  white10: 'rgba(255,255,255,0.08)',
+  pillBg: 'rgba(78,205,196,0.15)',
+  pillBorder: 'rgba(78,205,196,0.35)',
+  balanceBox: '#0D1526',
+  successGreen: '#34D399',
+  divider: 'rgba(255,255,255,0.12)',
+  overlay: 'rgba(0,0,0,0.88)',
+  closeBtn: '#4ECDC4',
+  closeBtnText: '#1B2A4A',
+  rowIcon: '#4ECDC4',
+};
 
 interface ReceiptModalProps {
   visible: boolean;
@@ -32,7 +55,6 @@ export function ReceiptModal({ visible, receipt, onClose, onUndo, undoAvailable 
       setUndoExpired(false);
       undoProgress.setValue(1);
 
-      // Countdown timer
       timerRef.current = setInterval(() => {
         setUndoTimeLeft(prev => {
           if (prev <= 1) {
@@ -44,7 +66,6 @@ export function ReceiptModal({ visible, receipt, onClose, onUndo, undoAvailable 
         });
       }, 1000);
 
-      // Animate progress bar
       animRef.current = Animated.timing(undoProgress, {
         toValue: 0,
         duration: UNDO_WINDOW_MS,
@@ -68,136 +89,169 @@ export function ReceiptModal({ visible, receipt, onClose, onUndo, undoAvailable 
       animationType="fade"
       onRequestClose={onClose}
     >
-      <View style={styles.overlay}>
-        <View style={[styles.container, { paddingBottom: insets.bottom + 8 }]}>
-          {/* Success Header */}
-          <View style={styles.successHeader}>
-            <View style={styles.successIconCircle}>
-              <MaterialIcons name="check-circle" size={36} color={Colors.success} />
-            </View>
-            <Text style={styles.successTitle}>Recovery Submitted!</Text>
-            <Text style={styles.successAmount}>{formatPKRFull(receipt.paymentAmount)}</Text>
-            <Text style={styles.successShop}>{receipt.shopName}</Text>
-          </View>
+      <View style={s.overlay}>
+        <View style={[s.sheet, { paddingBottom: insets.bottom + 12 }]}>
 
-          {/* Undo Bar */}
+          {/* ── Undo Bar ── */}
           {!undoExpired && onUndo && (
-            <View style={styles.undoSection}>
+            <View style={s.undoSection}>
               <Animated.View
                 style={[
-                  styles.undoProgressBar,
+                  s.undoProgressBar,
                   { width: undoProgress.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] }) },
                 ]}
               />
-              <View style={styles.undoContent}>
-                <Text style={styles.undoText}>Undo available for {undoTimeLeft}s</Text>
+              <View style={s.undoContent}>
+                <Text style={s.undoText}>Undo available for {undoTimeLeft}s</Text>
                 <Pressable
                   onPress={onUndo}
-                  style={({ pressed }) => [styles.undoBtn, pressed && { opacity: 0.7 }]}
+                  style={({ pressed }) => [s.undoBtn, pressed && { opacity: 0.7 }]}
                 >
-                  <MaterialIcons name="undo" size={14} color={Colors.warning} />
-                  <Text style={styles.undoBtnText}>Undo</Text>
+                  <MaterialIcons name="undo" size={14} color={C.yellow} />
+                  <Text style={s.undoBtnText}>Undo</Text>
                 </Pressable>
               </View>
             </View>
           )}
 
-          {/* Receipt */}
-          <ScrollView style={styles.receiptScroll} showsVerticalScrollIndicator={false}>
-            <View style={styles.receipt}>
-              {/* Receipt Header */}
-              <View style={styles.receiptHeader}>
-                <Text style={styles.receiptTitle}>AL-FALAH CREDIT SYSTEM</Text>
-                <Text style={styles.receiptCompany}>{receipt.companyName}</Text>
-                <View style={styles.receiptDivider} />
-                <Text style={styles.receiptLabel}>PAYMENT RECEIPT</Text>
-              </View>
+          {/* ── Receipt Card ── */}
+          <ScrollView style={s.scroll} showsVerticalScrollIndicator={false}>
+            <View style={s.card}>
 
-              {/* Distributor Phone */}
-              <View style={styles.receiptRow}>
-                <Text style={styles.receiptKey}>Distributor</Text>
-                <Text style={styles.receiptVal}>{receipt.distributorPhone || '-'}</Text>
-              </View>
-
-              <View style={styles.receiptDividerThin} />
-
-              {/* Shop Info */}
-              <View style={styles.receiptRow}>
-                <Text style={styles.receiptKey}>Shop</Text>
-                <Text style={[styles.receiptVal, { maxWidth: '60%', textAlign: 'right' }]}>{receipt.shopName}</Text>
-              </View>
-              {receipt.ownerName ? (
-                <View style={styles.receiptRow}>
-                  <Text style={styles.receiptKey}>Owner</Text>
-                  <Text style={styles.receiptVal}>{receipt.ownerName}</Text>
+              {/* ── Header: Dark blue with company info ── */}
+              <View style={s.header}>
+                <View style={s.headerIconRow}>
+                  <View style={s.bankIconCircle}>
+                    <FontAwesome5 name="university" size={16} color={C.white} />
+                  </View>
+                  <Text style={s.headerTitle}>{receipt.companyName || 'AL-FALAH TRADERS'}</Text>
                 </View>
-              ) : null}
-              {receipt.address ? (
-                <View style={styles.receiptRow}>
-                  <Text style={styles.receiptKey}>Address</Text>
-                  <Text style={[styles.receiptVal, { maxWidth: '60%', textAlign: 'right' }]}>{receipt.address}</Text>
+                <Text style={s.headerSub}>Payment Receipt</Text>
+
+                {/* Distributor Pill */}
+                {receipt.distributorPhone ? (
+                  <View style={s.pill}>
+                    <MaterialIcons name="phone" size={12} color={C.teal} />
+                    <Text style={s.pillText}>{receipt.distributorPhone}</Text>
+                  </View>
+                ) : null}
+
+                <View style={s.headerDivider} />
+              </View>
+
+              {/* ── Shop & Transaction Details ── */}
+              <View style={s.detailsSection}>
+
+                {/* Shop Name */}
+                <View style={s.detailRow}>
+                  <View style={s.detailIconWrap}>
+                    <FontAwesome5 name="store" size={12} color={C.rowIcon} />
+                  </View>
+                  <Text style={s.detailLabel}>Shop</Text>
+                  <Text style={s.detailValue} numberOfLines={2}>{receipt.shopName}</Text>
                 </View>
-              ) : null}
 
-              <View style={styles.receiptDividerThin} />
+                {/* Address */}
+                {receipt.address ? (
+                  <View style={s.detailRow}>
+                    <View style={s.detailIconWrap}>
+                      <Ionicons name="location" size={13} color={C.rowIcon} />
+                    </View>
+                    <Text style={s.detailLabel}>Address</Text>
+                    <Text style={[s.detailValue, { maxWidth: '55%', textAlign: 'right' }]} numberOfLines={2}>
+                      {receipt.address}
+                    </Text>
+                  </View>
+                ) : null}
 
-              {/* Transaction Info */}
-              <View style={styles.receiptRow}>
-                <Text style={styles.receiptKey}>Date</Text>
-                <Text style={styles.receiptVal}>{formatDate(receipt.date)}</Text>
+                {/* Owner */}
+                {receipt.ownerName ? (
+                  <View style={s.detailRow}>
+                    <View style={s.detailIconWrap}>
+                      <FontAwesome5 name="user" size={12} color={C.rowIcon} />
+                    </View>
+                    <Text style={s.detailLabel}>Owner</Text>
+                    <Text style={s.detailValue}>{receipt.ownerName}</Text>
+                  </View>
+                ) : null}
+
+                {/* Date */}
+                <View style={s.detailRow}>
+                  <View style={s.detailIconWrap}>
+                    <FontAwesome5 name="calendar-alt" size={12} color={C.rowIcon} />
+                  </View>
+                  <Text style={s.detailLabel}>Date</Text>
+                  <Text style={s.detailValue}>{formatDate(receipt.date)}</Text>
+                </View>
+
+                {/* Orderbooker */}
+                <View style={s.detailRow}>
+                  <View style={s.detailIconWrap}>
+                    <FontAwesome5 name="id-badge" size={12} color={C.rowIcon} />
+                  </View>
+                  <Text style={s.detailLabel}>Orderbooker</Text>
+                  <Text style={s.detailValue}>{receipt.orderbookerName}</Text>
+                </View>
               </View>
-              <View style={styles.receiptRow}>
-                <Text style={styles.receiptKey}>Collected By</Text>
-                <Text style={styles.receiptVal}>{receipt.orderbookerName}</Text>
+
+              {/* ── Balance Box ── */}
+              <View style={s.balanceBox}>
+                {/* Opening Balance */}
+                <View style={s.balanceRow}>
+                  <Text style={s.balanceLabel}>Opening Balance</Text>
+                  <Text style={s.balanceAmountWhite}>{formatPKRFull(receipt.openingBalance)}</Text>
+                </View>
+
+                {/* Payment Received */}
+                <View style={[s.balanceRow, { paddingVertical: 10 }]}>
+                  <Text style={s.balanceLabel}>Payment Received</Text>
+                  <Text style={s.balanceAmountTeal}>{formatPKRFull(receipt.paymentAmount)}</Text>
+                </View>
+
+                {/* Divider inside balance box */}
+                <View style={s.balanceInnerDivider} />
+
+                {/* Remaining Balance — biggest, boldest */}
+                <View style={[s.balanceRow, { paddingVertical: 6 }]}>
+                  <Text style={s.remainingLabel}>Remaining Balance</Text>
+                  <Text style={[
+                    s.remainingAmount,
+                    { color: receipt.remainingBalance > 0 ? C.yellow : C.successGreen },
+                  ]}>
+                    {formatPKRFull(receipt.remainingBalance)}
+                  </Text>
+                </View>
               </View>
 
-              <View style={styles.receiptDividerThin} />
+              {/* ── Thank You ── */}
+              <View style={s.thankSection}>
+                <View style={s.checkCircle}>
+                  <MaterialIcons name="check" size={14} color={C.teal} />
+                </View>
+                <Text style={s.thankText}>Thank you for your Payment!</Text>
+              </View>
 
-              {/* Balance Details */}
-              <View style={styles.receiptRow}>
-                <Text style={styles.receiptKey}>Opening Balance</Text>
-                <Text style={[styles.receiptVal, { color: Colors.warning }]}>
-                  {formatPKRFull(receipt.openingBalance)}
+              {/* ── Urdu Footer ── */}
+              <View style={s.footerSection}>
+                <Text style={s.footerUrdu}>
+                  اگر آپ کو بلنس میں کسی قسم کا اختلاف ہو تو ڈسٹریبیوٹر سے رابطہ کریں
                 </Text>
-              </View>
-              <View style={styles.receiptRow}>
-                <Text style={styles.receiptKey}>Payment Received</Text>
-                <Text style={[styles.receiptVal, { color: Colors.success, fontWeight: FontWeight.bold }]}>
-                  - {formatPKRFull(receipt.paymentAmount)}
-                </Text>
+                {receipt.transactionId ? (
+                  <Text style={s.footerTxn}>Txn: {receipt.transactionId}</Text>
+                ) : null}
               </View>
 
-              <View style={styles.receiptDivider} />
-
-              <View style={styles.receiptRow}>
-                <Text style={[styles.receiptKey, { fontSize: FontSize.md, fontWeight: FontWeight.bold, color: Colors.textPrimary }]}>
-                  Remaining Balance
-                </Text>
-                <Text style={[styles.receiptVal, {
-                  fontSize: FontSize.md,
-                  fontWeight: FontWeight.bold,
-                  color: receipt.remainingBalance > 0 ? Colors.warning : Colors.success,
-                }]}>
-                  {formatPKRFull(receipt.remainingBalance)}
-                </Text>
-              </View>
-
-              {/* Thank You */}
-              <View style={styles.thankYou}>
-                <Text style={styles.thankYouText}>Thank You</Text>
-                <Text style={styles.thankYouUrdu}>کسی بھی اختلاف کے لیے ڈسٹریبیوٹر سے رابطہ کریں</Text>
-              </View>
             </View>
           </ScrollView>
 
-          {/* Actions */}
-          <View style={styles.actions}>
+          {/* ── Close Button ── */}
+          <View style={s.actionBar}>
             <Pressable
               onPress={onClose}
-              style={({ pressed }) => [styles.closeBtn, pressed && { opacity: 0.8 }]}
+              style={({ pressed }) => [s.closeBtn, pressed && { opacity: 0.8 }]}
             >
-              <MaterialIcons name="check" size={18} color="#fff" />
-              <Text style={styles.closeBtnText}>Done</Text>
+              <MaterialIcons name="check" size={18} color={C.closeBtnText} />
+              <Text style={s.closeBtnText}>Done</Text>
             </Pressable>
           </View>
         </View>
@@ -206,69 +260,33 @@ export function ReceiptModal({ visible, receipt, onClose, onUndo, undoAvailable 
   );
 }
 
-const styles = StyleSheet.create({
+const s = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.85)',
+    backgroundColor: C.overlay,
     justifyContent: 'flex-end',
   },
-  container: {
-    backgroundColor: Colors.surface,
-    borderTopLeftRadius: Radius.xl,
-    borderTopRightRadius: Radius.xl,
+  sheet: {
+    backgroundColor: C.darkBlue,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
     maxHeight: '92%',
     borderTopWidth: 1,
-    borderColor: Colors.border,
-  },
-  successHeader: {
-    alignItems: 'center',
-    paddingTop: Spacing.lg,
-    paddingBottom: Spacing.md,
-    paddingHorizontal: Spacing.md,
-  },
-  successIconCircle: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: Colors.successMuted,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: Spacing.sm,
-    borderWidth: 1,
-    borderColor: Colors.success + '40',
-  },
-  successTitle: {
-    fontSize: FontSize.lg,
-    fontWeight: FontWeight.bold,
-    color: Colors.textPrimary,
-    marginBottom: 4,
-  },
-  successAmount: {
-    fontSize: FontSize.xxxl,
-    fontWeight: FontWeight.extrabold,
-    color: Colors.success,
-    letterSpacing: 0.5,
-  },
-  successShop: {
-    fontSize: FontSize.sm,
-    color: Colors.textSecondary,
-    marginTop: 4,
+    borderColor: C.teal + '30',
   },
 
-  // Undo
+  // ── Undo ──
   undoSection: {
-    marginHorizontal: Spacing.md,
-    marginBottom: Spacing.sm,
-    backgroundColor: Colors.surfaceElevated,
-    borderRadius: Radius.md,
+    marginHorizontal: 16,
+    marginTop: 12,
+    marginBottom: 4,
+    backgroundColor: C.deepBlue,
+    borderRadius: 12,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: Colors.warningMuted,
+    borderColor: C.yellow + '30',
   },
-  undoProgressBar: {
-    height: 3,
-    backgroundColor: Colors.warning,
-  },
+  undoProgressBar: { height: 3, backgroundColor: C.yellow },
   undoContent: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -276,122 +294,234 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
   },
-  undoText: {
-    fontSize: FontSize.xs,
-    color: Colors.textMuted,
-  },
+  undoText: { fontSize: 11, color: C.white50 },
   undoBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: Colors.warningMuted,
+    backgroundColor: C.yellow + '20',
     paddingHorizontal: 10,
     paddingVertical: 5,
-    borderRadius: Radius.sm,
+    borderRadius: 6,
   },
-  undoBtnText: {
-    fontSize: FontSize.sm,
-    fontWeight: FontWeight.semibold,
-    color: Colors.warning,
+  undoBtnText: { fontSize: 12, fontWeight: '700', color: C.yellow },
+
+  // ── Scroll ──
+  scroll: { flex: 1, marginHorizontal: 16, marginTop: 8 },
+  card: {
+    backgroundColor: C.deepBlue,
+    borderRadius: 16,
+    overflow: 'hidden',
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: C.white10,
   },
 
-  // Receipt
-  receiptScroll: {
-    flex: 1,
-    marginHorizontal: Spacing.md,
-  },
-  receipt: {
-    backgroundColor: Colors.surfaceElevated,
-    borderRadius: Radius.lg,
-    padding: Spacing.md,
-    borderWidth: 1,
-    borderColor: Colors.borderLight,
-    marginBottom: Spacing.sm,
-  },
-  receiptHeader: {
+  // ── Header ──
+  header: {
+    backgroundColor: C.darkBlue,
     alignItems: 'center',
-    marginBottom: Spacing.sm,
+    paddingTop: 20,
+    paddingBottom: 14,
+    paddingHorizontal: 16,
   },
-  receiptTitle: {
-    fontSize: FontSize.sm,
-    fontWeight: FontWeight.extrabold,
-    color: Colors.primary,
-    letterSpacing: 1,
+  headerIconRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 4,
   },
-  receiptCompany: {
-    fontSize: FontSize.xs,
-    color: Colors.textSecondary,
-    marginTop: 2,
+  bankIconCircle: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: C.teal + '20',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: C.teal + '40',
   },
-  receiptLabel: {
-    fontSize: FontSize.xs,
-    fontWeight: FontWeight.semibold,
-    color: Colors.textMuted,
+  headerTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: C.white,
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+  },
+  headerSub: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: C.white50,
     letterSpacing: 2,
     marginTop: 4,
   },
-  receiptDivider: {
-    height: 1,
-    backgroundColor: Colors.border,
-    marginVertical: 8,
-  },
-  receiptDividerThin: {
-    height: 1,
-    backgroundColor: Colors.border + '60',
-    marginVertical: 6,
-  },
-  receiptRow: {
+  pill: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginVertical: 3,
-  },
-  receiptKey: {
-    fontSize: FontSize.xs,
-    color: Colors.textMuted,
-    flex: 1,
-  },
-  receiptVal: {
-    fontSize: FontSize.xs,
-    color: Colors.textSecondary,
-    fontWeight: FontWeight.medium,
-  },
-  thankYou: {
     alignItems: 'center',
-    marginTop: Spacing.md,
-    paddingTop: Spacing.sm,
-    borderTopWidth: 1,
-    borderTopColor: Colors.border,
+    gap: 5,
+    backgroundColor: C.pillBg,
+    borderWidth: 1,
+    borderColor: C.pillBorder,
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    marginTop: 10,
   },
-  thankYouText: {
-    fontSize: FontSize.sm,
-    fontWeight: FontWeight.semibold,
-    color: Colors.primary,
-    marginBottom: 4,
+  pillText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: C.teal,
+    letterSpacing: 0.3,
   },
-  thankYouUrdu: {
-    fontSize: FontSize.xs,
-    color: Colors.textMuted,
-    textAlign: 'center',
+  headerDivider: {
+    width: '100%',
+    height: 1,
+    backgroundColor: C.divider,
+    marginTop: 14,
   },
 
-  // Actions
-  actions: {
-    paddingHorizontal: Spacing.md,
-    paddingTop: Spacing.sm,
+  // ── Detail Rows ──
+  detailsSection: {
+    paddingHorizontal: 16,
+    paddingTop: 14,
+    paddingBottom: 10,
+  },
+  detailRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 5,
+  },
+  detailIconWrap: {
+    width: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 8,
+  },
+  detailLabel: {
+    fontSize: 12,
+    color: C.white50,
+    flex: 1,
+  },
+  detailValue: {
+    fontSize: 12,
+    color: C.white,
+    fontWeight: '600',
+    flex: 1,
+    textAlign: 'right',
+  },
+
+  // ── Balance Box ──
+  balanceBox: {
+    marginHorizontal: 16,
+    marginVertical: 6,
+    backgroundColor: C.balanceBox,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderWidth: 1,
+    borderColor: C.white10,
+  },
+  balanceRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  balanceLabel: {
+    fontSize: 12,
+    color: C.white70,
+    fontWeight: '500',
+  },
+  balanceAmountWhite: {
+    fontSize: 14,
+    color: C.white,
+    fontWeight: '700',
+  },
+  balanceAmountTeal: {
+    fontSize: 15,
+    color: C.teal,
+    fontWeight: '800',
+  },
+  balanceInnerDivider: {
+    height: 1,
+    backgroundColor: C.white20,
+    marginVertical: 4,
+  },
+  remainingLabel: {
+    fontSize: 13,
+    color: C.white,
+    fontWeight: '700',
+  },
+  remainingAmount: {
+    fontSize: 18,
+    fontWeight: '900',
+    letterSpacing: 0.3,
+  },
+
+  // ── Thank You ──
+  thankSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 14,
+  },
+  checkCircle: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: C.teal + '20',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: C.teal + '50',
+  },
+  thankText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: C.teal,
+  },
+
+  // ── Footer ──
+  footerSection: {
+    alignItems: 'center',
+    paddingBottom: 16,
+    paddingTop: 4,
+    borderTopWidth: 1,
+    borderTopColor: C.divider,
+    marginHorizontal: 16,
+  },
+  footerUrdu: {
+    fontSize: 10,
+    color: C.white50,
+    textAlign: 'center',
+    lineHeight: 18,
+    fontWeight: '700',
+  },
+  footerTxn: {
+    fontSize: 9,
+    color: C.white50,
+    marginTop: 6,
+    letterSpacing: 0.5,
+  },
+
+  // ── Close Button ──
+  actionBar: {
+    paddingHorizontal: 16,
+    paddingTop: 4,
+    paddingBottom: 4,
   },
   closeBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    backgroundColor: Colors.primary,
-    borderRadius: Radius.md,
+    backgroundColor: C.closeBtn,
+    borderRadius: 14,
     height: 50,
   },
   closeBtnText: {
-    fontSize: FontSize.md,
-    fontWeight: FontWeight.bold,
-    color: '#fff',
+    fontSize: 15,
+    fontWeight: '800',
+    color: C.closeBtnText,
   },
 });
